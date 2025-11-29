@@ -9,19 +9,11 @@
       "headers": [
         {
           "key": "Permissions-Policy",
-          "value": "xr-spatial-tracking=(self), camera=(self)"
+          "value": "xr-spatial-tracking=*, camera=*"
         },
         {
           "key": "Feature-Policy",
-          "value": "camera 'self'; xr-spatial-tracking 'self'"
-        },
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin"
-        },
-        {
-          "key": "Cross-Origin-Embedder-Policy",
-          "value": "require-corp"
+          "value": "camera *; xr-spatial-tracking *"
         }
       ]
     }
