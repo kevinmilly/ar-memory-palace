@@ -167,9 +167,7 @@ export class ArViewComponent implements OnInit, OnDestroy {
 
       console.log('Requesting immersive-ar session...');
       this.xrSession = await xr.requestSession('immersive-ar', {
-        requiredFeatures: ['hit-test', 'local-floor'],
-        optionalFeatures: ['dom-overlay'],
-        domOverlay: { root: document.body }
+        requiredFeatures: ['local', 'hit-test']
       });
 
       await this.renderer.xr.setSession(this.xrSession);
