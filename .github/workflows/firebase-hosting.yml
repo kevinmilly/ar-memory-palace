@@ -8,9 +8,6 @@ on:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./ar-spatial-notes
     steps:
       - uses: actions/checkout@v3
       
@@ -20,9 +17,11 @@ jobs:
           node-version: '20'
           
       - name: Install dependencies
+        working-directory: ./ar-spatial-notes
         run: npm ci --legacy-peer-deps
         
       - name: Build
+        working-directory: ./ar-spatial-notes
         run: npm run build:prod
         
       - name: Deploy to Firebase
