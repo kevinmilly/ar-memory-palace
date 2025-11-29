@@ -3,6 +3,29 @@
   "buildCommand": "npm run build:prod",
   "outputDirectory": "dist/ar-spatial-notes/browser",
   "framework": null,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "xr-spatial-tracking=(self), camera=(self)"
+        },
+        {
+          "key": "Feature-Policy",
+          "value": "camera 'self'; xr-spatial-tracking 'self'"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "require-corp"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",
