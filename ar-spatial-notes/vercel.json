@@ -1,22 +1,12 @@
 {
-  "version": 2,
   "installCommand": "npm install --legacy-peer-deps",
-  "builds": [
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/ar-spatial-notes/browser",
+  "framework": null,
+  "rewrites": [
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist/ar-spatial-notes/browser"
-      }
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ],
-  "github": {
-    "silent": true
-  }
+  ]
 }
