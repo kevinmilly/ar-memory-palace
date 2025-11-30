@@ -42,9 +42,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val PICK_IMAGE_REQUEST = 1001
-    }
-
-    companion object {
         private const val CAMERA_PERMISSION_CODE = 0
     }
 
