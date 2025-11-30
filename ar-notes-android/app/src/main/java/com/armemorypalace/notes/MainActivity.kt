@@ -310,15 +310,16 @@ class MainActivity : AppCompatActivity() {
 
         MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(color))
             .thenAccept { material ->
-                val cube = ShapeFactory.makeCube(
-                    Vector3(0.15f, 0.15f, 0.15f),
-                    Vector3(0f, 0.075f, 0f),
+                // Create a sphere marker (like a pin/location marker)
+                val sphere = ShapeFactory.makeSphere(
+                    0.08f,  // radius
+                    Vector3(0f, 0.08f, 0f),  // center position
                     material
                 )
                 
-                val cubeNode = com.google.ar.sceneform.Node()
-                cubeNode.renderable = cube
-                cubeNode.setParent(anchorNode)
+                val markerNode = com.google.ar.sceneform.Node()
+                markerNode.renderable = sphere
+                markerNode.setParent(anchorNode)
 
                 // Create container with text and optionally image
                 val container = LinearLayout(this)
@@ -357,11 +358,11 @@ class MainActivity : AppCompatActivity() {
                         val labelNode = com.google.ar.sceneform.Node()
                         labelNode.renderable = renderable
                         labelNode.localPosition = Vector3(0f, 0.25f, 0f)
-                        labelNode.setParent(cubeNode)
+                        labelNode.setParent(markerNode)
                     }
 
-                // Make cube clickable
-                cubeNode.setOnTapListener { _, _ ->
+                // Make marker clickable
+                markerNode.setOnTapListener { _, _ ->
                     showNoteDetailsDialog(noteText, imageUri, anchorNode)
                 }
 
