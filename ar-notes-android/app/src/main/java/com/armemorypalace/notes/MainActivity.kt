@@ -115,13 +115,18 @@ class MainActivity : AppCompatActivity() {
             // Create AR session
             session = Session(this).apply {
                 val config = Config(this).apply {
-                    updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                    // Use BLOCKING mode for better performance and stability
+                    updateMode = Config.UpdateMode.BLOCKING
                     focusMode = Config.FocusMode.AUTO
                     planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
-                    lightEstimationMode = Config.LightEstimationMode.AMBIENT_INTENSITY
+                    // Disable light estimation to reduce lag significantly
+                    lightEstimationMode = Config.LightEstimationMode.DISABLED
                 }
                 configure(config)
             }
+            
+            // Ensure ARFragment uses this session
+            arFragment?.arSceneView?.setupSession(session)
 
             Toast.makeText(this, "AR Session ready! Tap to place notes", Toast.LENGTH_SHORT).show()
             
@@ -160,15 +165,19 @@ class MainActivity : AppCompatActivity() {
                 return@setOnTapArPlaneListener
             }
 
-            // Create anchor at tap location
-            val anchor = hitResult.createAnchor()
-            val anchorNode = AnchorNode(anchor)
-            anchorNode.setParent(arFragment?.arSceneView?.scene)
-            
-            pendingAnchor = anchorNode
+            // Create anchor directly from session for better stability
+            val anchor = session?.createAnchor(hitResult.hitPose)
+            if (anchor != null) {
+                val anchorNode = AnchorNode(anchor)
+                anchorNode.setParent(arFragment?.arSceneView?.scene)
+                
+                pendingAnchor = anchorNode
 
-            // Show dialog to enter note text
-            showNoteInputDialog(anchorNode)
+                // Show dialog to enter note text
+                showNoteInputDialog(anchorNode)
+            } else {
+                Toast.makeText(this, "Failed to create anchor", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -276,9 +285,11 @@ class MainActivity : AppCompatActivity() {
                     val imageView = ImageView(this)
                     try {
                         val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, imageUri)
-                        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, 300, 300, true)
+                        // Smaller image size for better performance
+                        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, 200, 200, true)
                         imageView.setImageBitmap(scaledBitmap)
-                        imageView.layoutParams = LinearLayout.LayoutParams(300, 300)
+                        imageView.layoutParams = LinearLayout.LayoutParams(200, 200)
+                        imageView.scaleType = ImageView.ScaleType.CENTER_CROP
                         container.addView(imageView)
                     } catch (e: Exception) {
                         Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
