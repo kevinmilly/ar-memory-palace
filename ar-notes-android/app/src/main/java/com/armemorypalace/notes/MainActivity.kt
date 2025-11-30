@@ -62,6 +62,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
     private lateinit var storage: FirebaseStorage
     private var currentUserId: String? = null
+    
+    // Map to store noteId for each anchor node
+    private val anchorNoteMap = mutableMapOf<AnchorNode, String>()
 
     companion object {
         private const val PICK_IMAGE_REQUEST = 1001
@@ -405,9 +408,10 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("OK", null)
             .setNegativeButton("Delete") { dialog, _ ->
                 // Delete from Firestore
-                val noteId = anchorNode.userData?.get("noteId") as? String
+                val noteId = anchorNoteMap[anchorNode]
                 if (noteId != null) {
                     deleteNoteFromFirestore(noteId)
+                    anchorNoteMap.remove(anchorNode)
                 }
                 
                 anchorNode.anchor?.detach()
@@ -465,8 +469,8 @@ class MainActivity : AppCompatActivity() {
             positionZ = position.z
         )
         
-        // Store noteId in anchor userData for deletion
-        anchorNode.userData = mapOf("noteId" to noteId)
+        // Store noteId in map for deletion
+        anchorNoteMap[anchorNode] = noteId
         
         firestore.collection("notes")
             .document(noteId)
