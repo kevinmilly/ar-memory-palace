@@ -51,6 +51,9 @@ dependencies {
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-storage'
     
+    // Google Sign-In
+    implementation 'com.google.android.gms:play-services-auth:21.0.0'
+    
     // AndroidX
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'

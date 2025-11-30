@@ -31,7 +31,12 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.storage.FirebaseStorage
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 
@@ -61,6 +66,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
     private lateinit var storage: FirebaseStorage
     private var currentUserId: String? = null
+    
+    // Google Sign-In
+    private lateinit var googleSignInClient: GoogleSignInClient
+    private lateinit var googleSignInLauncher: ActivityResultLauncher<android.content.Intent>
     
     // Map to store noteId for each anchor node
     private val anchorNoteMap = mutableMapOf<AnchorNode, String>()
@@ -99,17 +108,48 @@ class MainActivity : AppCompatActivity() {
             pendingAnchor = null
         }
 
+        // Initialize Google Sign-In launcher
+        googleSignInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                firebaseAuthWithGoogle(account.idToken!!)
+            } catch (e: ApiException) {
+                Toast.makeText(this, "Google sign-in failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                // Fall back to anonymous
+                signInAnonymously()
+            }
+        }
+
         // Initialize Firebase - wrapped in try-catch to prevent crashes
         try {
             firestore = FirebaseFirestore.getInstance()
             auth = FirebaseAuth.getInstance()
             storage = FirebaseStorage.getInstance()
             
-            // Sign in anonymously to get a user ID
-            signInAnonymously()
+            // Configure Google Sign-In
+            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(getString(R.string.default_web_client_id))
+                .requestEmail()
+                .build()
+            googleSignInClient = GoogleSignIn.getClient(this, gso)
+            
+            // Check if already signed in
+            val currentUser = auth.currentUser
+            if (currentUser != null) {
+                currentUserId = currentUser.uid
+                val isAnonymous = currentUser.isAnonymous
+                if (isAnonymous) {
+                    // Show prompt to upgrade account
+                    showUpgradeAccountPrompt()
+                }
+                loadNotesFromFirestore()
+            } else {
+                // Start with anonymous, prompt for Google Sign-In after first note
+                signInAnonymously()
+            }
         } catch (e: Exception) {
             Toast.makeText(this, "Firebase not configured - notes won't be saved", Toast.LENGTH_LONG).show()
-            // App will work without Firebase, just won't save notes
         }
 
         // Check ARCore availability
@@ -120,12 +160,49 @@ class MainActivity : AppCompatActivity() {
         auth.signInAnonymously()
             .addOnSuccessListener { authResult ->
                 currentUserId = authResult.user?.uid
-                Toast.makeText(this, "Signed in - notes will be saved", Toast.LENGTH_SHORT).show()
-                // Load existing notes for this user
                 loadNotesFromFirestore()
             }
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Auth failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+    
+    private fun showUpgradeAccountPrompt() {
+        AlertDialog.Builder(this)
+            .setTitle("Save Notes Permanently")
+            .setMessage("Sign in with Google to sync your notes across all your devices")
+            .setPositiveButton("Sign In") { _, _ ->
+                signInWithGoogle()
+            }
+            .setNegativeButton("Later", null)
+            .show()
+    }
+    
+    private fun signInWithGoogle() {
+        val signInIntent = googleSignInClient.signInIntent
+        googleSignInLauncher.launch(signInIntent)
+    }
+    
+    private fun firebaseAuthWithGoogle(idToken: String) {
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        val previousUserId = currentUserId
+        
+        auth.currentUser?.linkWithCredential(credential)
+            ?.addOnSuccessListener {
+                currentUserId = it.user?.uid
+                Toast.makeText(this, "Account upgraded! Notes will sync across devices", Toast.LENGTH_LONG).show()
+            }
+            ?.addOnFailureListener { e ->
+                // If linking fails, try regular sign-in
+                auth.signInWithCredential(credential)
+                    .addOnSuccessListener {
+                        currentUserId = it.user?.uid
+                        Toast.makeText(this, "Signed in with Google", Toast.LENGTH_SHORT).show()
+                        loadNotesFromFirestore()
+                    }
+                    .addOnFailureListener { e2 ->
+                        Toast.makeText(this, "Sign-in failed: ${e2.message}", Toast.LENGTH_SHORT).show()
+                    }
             }
     }
 
