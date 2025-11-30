@@ -7,20 +7,30 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:756720016237:android:placeholder",
+        "mobilesdk_app_id": "1:756720016237:android:0c7cbbf71ebfdad9735864",
         "android_client_info": {
           "package_name": "com.armemorypalace.notes"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "756720016237-ehs53qnrd5g7g6g9eqicit7skqhi9r61.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyDxH21MIzKJ3Lg-IV_t5TOINKTsxZ3vY6Q"
+          "current_key": "AIzaSyCELbH9SRMT2BeVnUSOXnWfXgcHFm538A0"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "756720016237-ehs53qnrd5g7g6g9eqicit7skqhi9r61.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
