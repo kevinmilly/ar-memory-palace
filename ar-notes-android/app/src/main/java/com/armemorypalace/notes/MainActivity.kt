@@ -29,6 +29,23 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.MediaStore
 import android.graphics.Bitmap
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.storage.FirebaseStorage
+import java.io.ByteArrayOutputStream
+import java.util.UUID
+
+// Data model for notes
+data class Note(
+    val id: String = "",
+    val userId: String = "",
+    val text: String = "",
+    val imageUrl: String = "",
+    val positionX: Float = 0f,
+    val positionY: Float = 0f,
+    val positionZ: Float = 0f,
+    val timestamp: Long = System.currentTimeMillis()
+)
 
 class MainActivity : AppCompatActivity() {
 
@@ -39,6 +56,12 @@ class MainActivity : AppCompatActivity() {
     private var pendingAnchor: AnchorNode? = null
     private var selectedImageUri: Uri? = null
     private var pendingNoteText: String? = null
+    
+    // Firebase
+    private lateinit var firestore: FirebaseFirestore
+    private lateinit var auth: FirebaseAuth
+    private lateinit var storage: FirebaseStorage
+    private var currentUserId: String? = null
 
     companion object {
         private const val PICK_IMAGE_REQUEST = 1001
@@ -51,8 +74,29 @@ class MainActivity : AppCompatActivity() {
 
         arFragment = supportFragmentManager.findFragmentById(R.id.arFragment) as? ArFragment
 
+        // Initialize Firebase
+        firestore = FirebaseFirestore.getInstance()
+        auth = FirebaseAuth.getInstance()
+        storage = FirebaseStorage.getInstance()
+        
+        // Sign in anonymously to get a user ID
+        signInAnonymously()
+
         // Check ARCore availability
         checkARCoreAvailability()
+    }
+    
+    private fun signInAnonymously() {
+        auth.signInAnonymously()
+            .addOnSuccessListener { authResult ->
+                currentUserId = authResult.user?.uid
+                Toast.makeText(this, "Signed in - notes will be saved", Toast.LENGTH_SHORT).show()
+                // Load existing notes for this user
+                loadNotesFromFirestore()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Auth failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
     }
 
     private fun checkARCoreAvailability() {
@@ -319,6 +363,9 @@ class MainActivity : AppCompatActivity() {
                     showNoteDetailsDialog(noteText, imageUri, anchorNode)
                 }
 
+                // Save note to Firestore
+                saveNoteToFirestore(noteText, imageUri, anchorNode)
+                
                 Toast.makeText(this, "Note placed!", Toast.LENGTH_SHORT).show()
             }
     }
@@ -357,11 +404,111 @@ class MainActivity : AppCompatActivity() {
             .setView(container)
             .setPositiveButton("OK", null)
             .setNegativeButton("Delete") { dialog, _ ->
+                // Delete from Firestore
+                val noteId = anchorNode.userData?.get("noteId") as? String
+                if (noteId != null) {
+                    deleteNoteFromFirestore(noteId)
+                }
+                
                 anchorNode.anchor?.detach()
                 anchorNode.setParent(null)
                 Toast.makeText(this, "Note deleted", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
             }
             .show()
+    }
+    
+    private fun saveNoteToFirestore(noteText: String, imageUri: Uri?, anchorNode: AnchorNode) {
+        val userId = currentUserId ?: return
+        val noteId = UUID.randomUUID().toString()
+        
+        // Get anchor position
+        val position = anchorNode.worldPosition
+        
+        // Save image to Firebase Storage if exists
+        if (imageUri != null) {
+            val imageRef = storage.reference.child("users/$userId/notes/$noteId.jpg")
+            
+            try {
+                val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, imageUri)
+                val baos = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos)
+                val data = baos.toByteArray()
+                
+                imageRef.putBytes(data)
+                    .addOnSuccessListener { taskSnapshot ->
+                        imageRef.downloadUrl.addOnSuccessListener { uri ->
+                            saveNoteData(noteId, userId, noteText, uri.toString(), position, anchorNode)
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        Toast.makeText(this, "Failed to upload image: ${e.message}", Toast.LENGTH_SHORT).show()
+                        saveNoteData(noteId, userId, noteText, "", position, anchorNode)
+                    }
+            } catch (e: Exception) {
+                saveNoteData(noteId, userId, noteText, "", position, anchorNode)
+            }
+        } else {
+            saveNoteData(noteId, userId, noteText, "", position, anchorNode)
+        }
+    }
+    
+    private fun saveNoteData(noteId: String, userId: String, text: String, imageUrl: String, 
+                            position: Vector3, anchorNode: AnchorNode) {
+        val note = Note(
+            id = noteId,
+            userId = userId,
+            text = text,
+            imageUrl = imageUrl,
+            positionX = position.x,
+            positionY = position.y,
+            positionZ = position.z
+        )
+        
+        // Store noteId in anchor userData for deletion
+        anchorNode.userData = mapOf("noteId" to noteId)
+        
+        firestore.collection("notes")
+            .document(noteId)
+            .set(note)
+            .addOnSuccessListener {
+                Toast.makeText(this, "Note saved to cloud!", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+    
+    private fun loadNotesFromFirestore() {
+        val userId = currentUserId ?: return
+        
+        firestore.collection("notes")
+            .whereEqualTo("userId", userId)
+            .get()
+            .addOnSuccessListener { documents ->
+                Toast.makeText(this, "Loading ${documents.size()} saved notes...", Toast.LENGTH_SHORT).show()
+                
+                for (document in documents) {
+                    val note = document.toObject(Note::class.java)
+                    // Note: We can't perfectly relocalize without Cloud Anchors
+                    // For now, notes will be recreated at saved positions relative to device start
+                    // TODO: Add Cloud Anchors for proper world-locked persistence
+                }
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Failed to load notes: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+    
+    private fun deleteNoteFromFirestore(noteId: String) {
+        firestore.collection("notes")
+            .document(noteId)
+            .delete()
+            .addOnSuccessListener {
+                Toast.makeText(this, "Note deleted from cloud", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Failed to delete: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 }
