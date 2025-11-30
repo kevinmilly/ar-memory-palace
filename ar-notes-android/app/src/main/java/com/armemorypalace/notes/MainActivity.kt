@@ -16,8 +16,13 @@ import com.google.ar.core.exceptions.*
 import com.google.ar.sceneform.AnchorNode
 import com.google.ar.sceneform.rendering.MaterialFactory
 import com.google.ar.sceneform.rendering.ShapeFactory
+import com.google.ar.sceneform.rendering.ViewRenderable
 import com.google.ar.sceneform.ux.ArFragment
 import com.google.ar.sceneform.math.Vector3
+import android.app.AlertDialog
+import android.widget.EditText
+import android.widget.TextView
+import android.view.View
 
 class MainActivity : AppCompatActivity() {
 
@@ -25,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private var session: Session? = null
     private var installRequested = false
     private var noteCount = 0
+    private var pendingAnchor: AnchorNode? = null
 
     companion object {
         private const val CAMERA_PERMISSION_CODE = 0
@@ -147,30 +153,102 @@ class MainActivity : AppCompatActivity() {
             val anchor = hitResult.createAnchor()
             val anchorNode = AnchorNode(anchor)
             anchorNode.setParent(arFragment?.arSceneView?.scene)
+            
+            pendingAnchor = anchorNode
 
-            // Create a colored cube
-            val colors = listOf(
-                android.graphics.Color.GREEN,
-                android.graphics.Color.BLUE,
-                android.graphics.Color.RED,
-                android.graphics.Color.YELLOW
-            )
-            val color = colors[noteCount % colors.size]
-
-            MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(color))
-                .thenAccept { material ->
-                    val cube = ShapeFactory.makeCube(
-                        Vector3(0.1f, 0.1f, 0.1f),
-                        Vector3.zero(),
-                        material
-                    )
-                    val cubeNode = com.google.ar.sceneform.Node()
-                    cubeNode.renderable = cube
-                    cubeNode.setParent(anchorNode)
-                    
-                    noteCount++
-                    Toast.makeText(this, "Note #$noteCount placed!", Toast.LENGTH_SHORT).show()
-                }
+            // Show dialog to enter note text
+            showNoteInputDialog(anchorNode)
         }
+    }
+
+    private fun showNoteInputDialog(anchorNode: AnchorNode) {
+        val input = EditText(this)
+        input.hint = "Enter your note..."
+        input.setPadding(50, 30, 50, 30)
+
+        AlertDialog.Builder(this)
+            .setTitle("Create AR Note")
+            .setView(input)
+            .setPositiveButton("Place") { dialog, _ ->
+                val noteText = input.text.toString()
+                if (noteText.isNotEmpty()) {
+                    placeNote(anchorNode, noteText)
+                } else {
+                    anchorNode.anchor?.detach()
+                    anchorNode.setParent(null)
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel") { dialog, _ ->
+                anchorNode.anchor?.detach()
+                anchorNode.setParent(null)
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun placeNote(anchorNode: AnchorNode, noteText: String) {
+        noteCount++
+        
+        // Create a colored cube base
+        val colors = listOf(
+            android.graphics.Color.parseColor("#4CAF50"),
+            android.graphics.Color.parseColor("#2196F3"),
+            android.graphics.Color.parseColor("#FF5722"),
+            android.graphics.Color.parseColor("#FFC107")
+        )
+        val color = colors[(noteCount - 1) % colors.size]
+
+        MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(color))
+            .thenAccept { material ->
+                val cube = ShapeFactory.makeCube(
+                    Vector3(0.15f, 0.15f, 0.15f),
+                    Vector3(0f, 0.075f, 0f),
+                    material
+                )
+                
+                val cubeNode = com.google.ar.sceneform.Node()
+                cubeNode.renderable = cube
+                cubeNode.setParent(anchorNode)
+
+                // Create text label above cube
+                val textView = TextView(this)
+                textView.text = noteText
+                textView.setBackgroundColor(android.graphics.Color.parseColor("#DD000000"))
+                textView.setTextColor(android.graphics.Color.WHITE)
+                textView.setPadding(20, 15, 20, 15)
+                textView.textSize = 14f
+
+                ViewRenderable.builder()
+                    .setView(this, textView)
+                    .build()
+                    .thenAccept { renderable ->
+                        val textNode = com.google.ar.sceneform.Node()
+                        textNode.renderable = renderable
+                        textNode.localPosition = Vector3(0f, 0.25f, 0f)
+                        textNode.setParent(cubeNode)
+                    }
+
+                // Make cube clickable
+                cubeNode.setOnTapListener { _, _ ->
+                    showNoteDetailsDialog(noteText, anchorNode)
+                }
+
+                Toast.makeText(this, "Note placed!", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun showNoteDetailsDialog(noteText: String, anchorNode: AnchorNode) {
+        AlertDialog.Builder(this)
+            .setTitle("AR Note")
+            .setMessage(noteText)
+            .setPositiveButton("OK", null)
+            .setNegativeButton("Delete") { dialog, _ ->
+                anchorNode.anchor?.detach()
+                anchorNode.setParent(null)
+                Toast.makeText(this, "Note deleted", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .show()
     }
 }
