@@ -77,13 +77,18 @@ class MainActivity : AppCompatActivity() {
 
         arFragment = supportFragmentManager.findFragmentById(R.id.arFragment) as? ArFragment
 
-        // Initialize Firebase
-        firestore = FirebaseFirestore.getInstance()
-        auth = FirebaseAuth.getInstance()
-        storage = FirebaseStorage.getInstance()
-        
-        // Sign in anonymously to get a user ID
-        signInAnonymously()
+        // Initialize Firebase - wrapped in try-catch to prevent crashes
+        try {
+            firestore = FirebaseFirestore.getInstance()
+            auth = FirebaseAuth.getInstance()
+            storage = FirebaseStorage.getInstance()
+            
+            // Sign in anonymously to get a user ID
+            signInAnonymously()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Firebase not configured - notes won't be saved", Toast.LENGTH_LONG).show()
+            // App will work without Firebase, just won't save notes
+        }
 
         // Check ARCore availability
         checkARCoreAvailability()
@@ -423,7 +428,10 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun saveNoteToFirestore(noteText: String, imageUri: Uri?, anchorNode: AnchorNode) {
-        val userId = currentUserId ?: return
+        val userId = currentUserId ?: run {
+            // Firebase not initialized, skip saving
+            return
+        }
         val noteId = UUID.randomUUID().toString()
         
         // Get anchor position
