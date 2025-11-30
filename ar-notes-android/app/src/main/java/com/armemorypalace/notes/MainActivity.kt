@@ -22,7 +22,13 @@ import com.google.ar.sceneform.math.Vector3
 import android.app.AlertDialog
 import android.widget.EditText
 import android.widget.TextView
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.view.View
+import android.content.Intent
+import android.net.Uri
+import android.provider.MediaStore
+import android.graphics.Bitmap
 
 class MainActivity : AppCompatActivity() {
 
@@ -31,6 +37,12 @@ class MainActivity : AppCompatActivity() {
     private var installRequested = false
     private var noteCount = 0
     private var pendingAnchor: AnchorNode? = null
+    private var selectedImageUri: Uri? = null
+    private var pendingNoteText: String? = null
+
+    companion object {
+        private const val PICK_IMAGE_REQUEST = 1001
+    }
 
     companion object {
         private const val CAMERA_PERMISSION_CODE = 0
@@ -168,11 +180,23 @@ class MainActivity : AppCompatActivity() {
 
         AlertDialog.Builder(this)
             .setTitle("Create AR Note")
+            .setMessage("Enter text for your note, then optionally add an image")
             .setView(input)
-            .setPositiveButton("Place") { dialog, _ ->
+            .setPositiveButton("Add Image") { dialog, _ ->
                 val noteText = input.text.toString()
                 if (noteText.isNotEmpty()) {
-                    placeNote(anchorNode, noteText)
+                    pendingNoteText = noteText
+                    pendingAnchor = anchorNode
+                    pickImage()
+                } else {
+                    Toast.makeText(this, "Please enter note text first", Toast.LENGTH_SHORT).show()
+                }
+                dialog.dismiss()
+            }
+            .setNeutralButton("Text Only") { dialog, _ ->
+                val noteText = input.text.toString()
+                if (noteText.isNotEmpty()) {
+                    placeNote(anchorNode, noteText, null)
                 } else {
                     anchorNode.anchor?.detach()
                     anchorNode.setParent(null)
@@ -187,7 +211,38 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun placeNote(anchorNode: AnchorNode, noteText: String) {
+    private fun pickImage() {
+        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        startActivityForResult(intent, PICK_IMAGE_REQUEST)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        if (requestCode == PICK_IMAGE_REQUEST && resultCode == RESULT_OK && data != null) {
+            selectedImageUri = data.data
+            pendingAnchor?.let { anchor ->
+                pendingNoteText?.let { text ->
+                    placeNote(anchor, text, selectedImageUri)
+                }
+            }
+            // Reset pending state
+            selectedImageUri = null
+            pendingNoteText = null
+            pendingAnchor = null
+        } else if (requestCode == PICK_IMAGE_REQUEST) {
+            // User cancelled image picker
+            pendingAnchor?.let { anchor ->
+                pendingNoteText?.let { text ->
+                    placeNote(anchor, text, null)
+                }
+            }
+            pendingNoteText = null
+            pendingAnchor = null
+        }
+    }
+
+    private fun placeNote(anchorNode: AnchorNode, noteText: String, imageUri: Uri?) {
         noteCount++
         
         // Create a colored cube base
@@ -211,37 +266,85 @@ class MainActivity : AppCompatActivity() {
                 cubeNode.renderable = cube
                 cubeNode.setParent(anchorNode)
 
-                // Create text label above cube
+                // Create container with text and optionally image
+                val container = LinearLayout(this)
+                container.orientation = LinearLayout.VERTICAL
+                container.setBackgroundColor(android.graphics.Color.parseColor("#DD000000"))
+                container.setPadding(20, 15, 20, 15)
+
+                // Add image if provided
+                if (imageUri != null) {
+                    val imageView = ImageView(this)
+                    try {
+                        val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, imageUri)
+                        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, 300, 300, true)
+                        imageView.setImageBitmap(scaledBitmap)
+                        imageView.layoutParams = LinearLayout.LayoutParams(300, 300)
+                        container.addView(imageView)
+                    } catch (e: Exception) {
+                        Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                // Add text
                 val textView = TextView(this)
                 textView.text = noteText
-                textView.setBackgroundColor(android.graphics.Color.parseColor("#DD000000"))
                 textView.setTextColor(android.graphics.Color.WHITE)
-                textView.setPadding(20, 15, 20, 15)
+                textView.setPadding(0, 15, 0, 0)
                 textView.textSize = 14f
+                container.addView(textView)
 
                 ViewRenderable.builder()
-                    .setView(this, textView)
+                    .setView(this, container)
                     .build()
                     .thenAccept { renderable ->
-                        val textNode = com.google.ar.sceneform.Node()
-                        textNode.renderable = renderable
-                        textNode.localPosition = Vector3(0f, 0.25f, 0f)
-                        textNode.setParent(cubeNode)
+                        val labelNode = com.google.ar.sceneform.Node()
+                        labelNode.renderable = renderable
+                        labelNode.localPosition = Vector3(0f, 0.25f, 0f)
+                        labelNode.setParent(cubeNode)
                     }
 
                 // Make cube clickable
                 cubeNode.setOnTapListener { _, _ ->
-                    showNoteDetailsDialog(noteText, anchorNode)
+                    showNoteDetailsDialog(noteText, imageUri, anchorNode)
                 }
 
                 Toast.makeText(this, "Note placed!", Toast.LENGTH_SHORT).show()
             }
     }
 
-    private fun showNoteDetailsDialog(noteText: String, anchorNode: AnchorNode) {
+    private fun showNoteDetailsDialog(noteText: String, imageUri: Uri?, anchorNode: AnchorNode) {
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.setPadding(40, 20, 40, 20)
+
+        // Add image if exists
+        if (imageUri != null) {
+            val imageView = ImageView(this)
+            try {
+                val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, imageUri)
+                imageView.setImageBitmap(bitmap)
+                imageView.layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    400
+                )
+                imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+                container.addView(imageView)
+            } catch (e: Exception) {
+                // Image couldn't be loaded
+            }
+        }
+
+        // Add text
+        val textView = TextView(this)
+        textView.text = noteText
+        textView.setPadding(0, 20, 0, 0)
+        textView.textSize = 16f
+        container.addView(textView)
+
         AlertDialog.Builder(this)
             .setTitle("AR Note")
-            .setMessage(noteText)
+            .setView(container)
             .setPositiveButton("OK", null)
             .setNegativeButton("Delete") { dialog, _ ->
                 anchorNode.anchor?.detach()
