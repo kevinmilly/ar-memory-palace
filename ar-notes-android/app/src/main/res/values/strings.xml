@@ -3,5 +3,5 @@
     <string name="app_name">AR Memory Palace</string>
     <!-- This will be auto-generated from google-services.json -->
     <!-- You can find it in the Firebase Console under Project Settings > General > Web API Key -->
-    <string name="default_web_client_id" translatable="false">YOUR_WEB_CLIENT_ID_HERE</string>
+    <string name="default_web_client_id" translatable="false">1:756720016237756720016237-uvl0maada64nbhil24p15jng097d3d1s.apps.googleusercontent.com</string>
 </resources>
