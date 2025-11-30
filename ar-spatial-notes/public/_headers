@@ -1,4 +1,0 @@
-/*
-  Permissions-Policy: xr-spatial-tracking=*, camera=*, microphone=*, accelerometer=*, gyroscope=*, magnetometer=*
-  Feature-Policy: camera *; xr-spatial-tracking *; microphone *; accelerometer *; gyroscope *; magnetometer *
-  X-Frame-Options: SAMEORIGIN
