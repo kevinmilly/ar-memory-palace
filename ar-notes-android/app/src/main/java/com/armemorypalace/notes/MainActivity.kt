@@ -117,6 +117,8 @@ class MainActivity : AppCompatActivity() {
                 val config = Config(this).apply {
                     updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                     focusMode = Config.FocusMode.AUTO
+                    planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
+                    lightEstimationMode = Config.LightEstimationMode.AMBIENT_INTENSITY
                 }
                 configure(config)
             }
