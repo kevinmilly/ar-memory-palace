@@ -1,8 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    // Temporarily disable Firebase to fix build
-    // id 'com.google.gms.google-services'
+    id 'com.google.gms.google-services'
 }
 
 android {
@@ -46,11 +45,11 @@ dependencies {
     // Sceneform (for rendering 3D objects)
     implementation 'com.google.ar.sceneform.ux:sceneform-ux:1.17.1'
     
-    // Firebase - temporarily disabled to fix build issues
-    // implementation platform('com.google.firebase:firebase-bom:34.6.0')
-    // implementation 'com.google.firebase:firebase-firestore'
-    // implementation 'com.google.firebase:firebase-auth'
-    // implementation 'com.google.firebase:firebase-storage'
+    // Firebase - using BoM for version management
+    implementation platform('com.google.firebase:firebase-bom:34.6.0')
+    implementation 'com.google.firebase:firebase-firestore'
+    implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-storage'
     
     // AndroidX
     implementation 'androidx.core:core-ktx:1.12.0'
