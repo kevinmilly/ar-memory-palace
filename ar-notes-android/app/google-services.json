@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "756720016237",
+    "project_id": "kai-automation-477023",
+    "storage_bucket": "kai-automation-477023.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:756720016237:android:placeholder",
+        "android_client_info": {
+          "package_name": "com.armemorypalace.notes"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDxH21MIzKJ3Lg-IV_t5TOINKTsxZ3vY6Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

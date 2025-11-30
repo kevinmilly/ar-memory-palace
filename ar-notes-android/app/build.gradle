@@ -1,7 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    id 'com.google.gms.google-services'
+    // id 'com.google.gms.google-services'  // Commented out - will add back later for cloud sync
 }
 
 android {
@@ -40,10 +40,10 @@ dependencies {
     // Sceneform (for rendering 3D objects)
     implementation 'com.google.ar.sceneform.ux:sceneform-ux:1.17.1'
     
-    // Firebase for cloud anchors
-    implementation platform('com.google.firebase:firebase-bom:32.7.0')
-    implementation 'com.google.firebase:firebase-database-ktx'
-    implementation 'com.google.firebase:firebase-auth-ktx'
+    // Firebase for cloud anchors (commented out for now - will add back later)
+    // implementation platform('com.google.firebase:firebase-bom:32.7.0')
+    // implementation 'com.google.firebase:firebase-database-ktx'
+    // implementation 'com.google.firebase:firebase-auth-ktx'
     
     // AndroidX
     implementation 'androidx.core:core-ktx:1.12.0'
