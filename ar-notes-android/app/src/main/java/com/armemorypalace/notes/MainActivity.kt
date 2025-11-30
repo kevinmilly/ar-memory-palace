@@ -24,11 +24,11 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.view.View
-import android.content.Intent
 import android.net.Uri
 import android.provider.MediaStore
 import android.graphics.Bitmap
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.storage.FirebaseStorage
@@ -54,7 +54,6 @@ class MainActivity : AppCompatActivity() {
     private var installRequested = false
     private var noteCount = 0
     private var pendingAnchor: AnchorNode? = null
-    private var selectedImageUri: Uri? = null
     private var pendingNoteText: String? = null
     
     // Firebase
@@ -66,8 +65,10 @@ class MainActivity : AppCompatActivity() {
     // Map to store noteId for each anchor node
     private val anchorNoteMap = mutableMapOf<AnchorNode, String>()
 
+    // ActivityResultLauncher for picking images
+    private lateinit var imagePickerLauncher: ActivityResultLauncher<String>
+
     companion object {
-        private const val PICK_IMAGE_REQUEST = 1001
         private const val CAMERA_PERMISSION_CODE = 0
     }
 
@@ -76,6 +77,27 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         arFragment = supportFragmentManager.findFragmentById(R.id.arFragment) as? ArFragment
+
+        // Initialize the ActivityResultLauncher
+        imagePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+            if (uri != null) {
+                pendingAnchor?.let { anchor ->
+                    pendingNoteText?.let { text ->
+                        placeNote(anchor, text, uri)
+                    }
+                }
+            } else {
+                // User cancelled image picker, place text-only note
+                pendingAnchor?.let { anchor ->
+                    pendingNoteText?.let { text ->
+                        placeNote(anchor, text, null)
+                    }
+                }
+            }
+            // Reset pending state
+            pendingNoteText = null
+            pendingAnchor = null
+        }
 
         // Initialize Firebase - wrapped in try-catch to prevent crashes
         try {
@@ -167,8 +189,7 @@ class MainActivity : AppCompatActivity() {
             // Create AR session
             session = Session(this).apply {
                 val config = Config(this).apply {
-                    // Use BLOCKING mode for better performance and stability
-                    updateMode = Config.UpdateMode.BLOCKING
+                    updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                     focusMode = Config.FocusMode.AUTO
                     planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
                     // Disable light estimation to reduce lag significantly
@@ -212,7 +233,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupTapListener() {
-        arFragment?.setOnTapArPlaneListener { hitResult: HitResult, plane: Plane, motionEvent ->
+        arFragment?.setOnTapArPlaneListener { hitResult: HitResult, plane: Plane, _ ->
             if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) {
                 return@setOnTapArPlaneListener
             }
@@ -272,34 +293,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun pickImage() {
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        startActivityForResult(intent, PICK_IMAGE_REQUEST)
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        
-        if (requestCode == PICK_IMAGE_REQUEST && resultCode == RESULT_OK && data != null) {
-            selectedImageUri = data.data
-            pendingAnchor?.let { anchor ->
-                pendingNoteText?.let { text ->
-                    placeNote(anchor, text, selectedImageUri)
-                }
-            }
-            // Reset pending state
-            selectedImageUri = null
-            pendingNoteText = null
-            pendingAnchor = null
-        } else if (requestCode == PICK_IMAGE_REQUEST) {
-            // User cancelled image picker
-            pendingAnchor?.let { anchor ->
-                pendingNoteText?.let { text ->
-                    placeNote(anchor, text, null)
-                }
-            }
-            pendingNoteText = null
-            pendingAnchor = null
-        }
+        imagePickerLauncher.launch("image/*")
     }
 
     private fun placeNote(anchorNode: AnchorNode, noteText: String, imageUri: Uri?) {
@@ -448,7 +442,7 @@ class MainActivity : AppCompatActivity() {
                 val data = baos.toByteArray()
                 
                 imageRef.putBytes(data)
-                    .addOnSuccessListener { taskSnapshot ->
+                    .addOnSuccessListener { _ ->
                         imageRef.downloadUrl.addOnSuccessListener { uri ->
                             saveNoteData(noteId, userId, noteText, uri.toString(), position, anchorNode)
                         }
@@ -501,7 +495,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Loading ${documents.size()} saved notes...", Toast.LENGTH_SHORT).show()
                 
                 for (document in documents) {
-                    val note = document.toObject(Note::class.java)
+                    document.toObject(Note::class.java)
                     // Note: We can't perfectly relocalize without Cloud Anchors
                     // For now, notes will be recreated at saved positions relative to device start
                     // TODO: Add Cloud Anchors for proper world-locked persistence
