@@ -166,6 +166,8 @@ class MainActivity : AppCompatActivity() {
             auth = FirebaseAuth.getInstance()
             storage = FirebaseStorage.getInstance()
             
+            android.util.Log.d("MainActivity", "Firebase initialized successfully")
+            
             // Configure Google Sign-In
             val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestIdToken(getString(R.string.default_web_client_id))
@@ -177,6 +179,7 @@ class MainActivity : AppCompatActivity() {
             val currentUser = auth.currentUser
             if (currentUser != null) {
                 currentUserId = currentUser.uid
+                android.util.Log.d("MainActivity", "Already signed in: $currentUserId, isAnonymous: ${currentUser.isAnonymous}")
                 
                 // If anonymous and tutorial is complete, offer to sign in
                 if (currentUser.isAnonymous && sharedPreferences.getBoolean(TUTORIAL_COMPLETED_KEY, false)) {
@@ -185,11 +188,13 @@ class MainActivity : AppCompatActivity() {
                 
                 loadNotesFromFirestore()
             } else {
+                android.util.Log.d("MainActivity", "No current user, signing in anonymously")
                 // Start with anonymous, prompt for Google Sign-In after first note
                 signInAnonymously()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Firebase not configured - notes won't be saved", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Firebase error: ${e.message}", Toast.LENGTH_LONG).show()
+            android.util.Log.e("MainActivity", "Firebase initialization failed", e)
         }
 
         // Check ARCore availability
@@ -200,10 +205,13 @@ class MainActivity : AppCompatActivity() {
         auth.signInAnonymously()
             .addOnSuccessListener { authResult ->
                 currentUserId = authResult.user?.uid
+                Toast.makeText(this, "Signed in anonymously", Toast.LENGTH_SHORT).show()
+                android.util.Log.d("MainActivity", "Anonymous auth success: $currentUserId")
                 loadNotesFromFirestore()
             }
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Auth failed: ${e.message}", Toast.LENGTH_LONG).show()
+                android.util.Log.e("MainActivity", "Auth failed", e)
             }
     }
     
@@ -744,9 +752,13 @@ class MainActivity : AppCompatActivity() {
     
     private fun saveNoteToFirestore(noteText: String, imageUri: Uri?, audioPath: String?, anchorNode: AnchorNode) {
         val userId = currentUserId ?: run {
-            // Firebase not initialized, skip saving
+            // Firebase not initialized or user not authenticated
+            Toast.makeText(this, "Not signed in - note not saved", Toast.LENGTH_LONG).show()
+            android.util.Log.e("MainActivity", "Save failed: currentUserId is null")
             return
         }
+        
+        Toast.makeText(this, "Saving note to cloud...", Toast.LENGTH_SHORT).show()
         val noteId = UUID.randomUUID().toString()
         
         // Get anchor position
