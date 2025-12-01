@@ -176,11 +176,6 @@ class MainActivity : AppCompatActivity() {
             val currentUser = auth.currentUser
             if (currentUser != null) {
                 currentUserId = currentUser.uid
-                val isAnonymous = currentUser.isAnonymous
-                if (isAnonymous) {
-                    // Show prompt to upgrade account
-                    showUpgradeAccountPrompt()
-                }
                 loadNotesFromFirestore()
             } else {
                 // Start with anonymous, prompt for Google Sign-In after first note
@@ -666,6 +661,11 @@ class MainActivity : AppCompatActivity() {
                 saveNoteToFirestore(noteText, imageUri, audioPath, anchorNode)
                 
                 Toast.makeText(this, "Note placed!", Toast.LENGTH_SHORT).show()
+                
+                // Show upgrade prompt after first note if user is anonymous
+                if (noteCount == 1 && auth.currentUser?.isAnonymous == true) {
+                    showUpgradeAccountPrompt()
+                }
             }
     }
 
@@ -730,25 +730,40 @@ class MainActivity : AppCompatActivity() {
         
         // Save audio to Firebase Storage if exists
         if (audioPath != null) {
-            val audioFile = File(audioPath)
-            val audioRef = storage.reference.child("users/$userId/notes/$noteId.3gp")
-            
-            audioRef.putFile(Uri.fromFile(audioFile))
-                .addOnSuccessListener { _ ->
-                    audioRef.downloadUrl.addOnSuccessListener { uri ->
-                        saveNoteData(noteId, userId, noteText, "", uri.toString(), position, anchorNode)
-                    }
-                }
-                .addOnFailureListener { e ->
-                    Toast.makeText(this, "Failed to upload audio: ${e.message}", Toast.LENGTH_SHORT).show()
+            try {
+                val audioFile = File(audioPath)
+                if (!audioFile.exists()) {
+                    Toast.makeText(this, "Audio file not found", Toast.LENGTH_SHORT).show()
                     saveNoteData(noteId, userId, noteText, "", "", position, anchorNode)
+                    return
                 }
-            return
+                
+                val audioRef = storage.reference.child("users/$userId/audio/$noteId.3gp")
+                
+                audioRef.putFile(Uri.fromFile(audioFile))
+                    .addOnSuccessListener { _ ->
+                        audioRef.downloadUrl.addOnSuccessListener { uri ->
+                            saveNoteData(noteId, userId, noteText, "", uri.toString(), position, anchorNode)
+                        }.addOnFailureListener { e ->
+                            Toast.makeText(this, "Failed to get audio URL: ${e.message}", Toast.LENGTH_SHORT).show()
+                            saveNoteData(noteId, userId, noteText, "", "", position, anchorNode)
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        Toast.makeText(this, "Failed to upload audio: ${e.message}", Toast.LENGTH_SHORT).show()
+                        saveNoteData(noteId, userId, noteText, "", "", position, anchorNode)
+                    }
+                return
+            } catch (e: Exception) {
+                Toast.makeText(this, "Audio upload error: ${e.message}", Toast.LENGTH_SHORT).show()
+                saveNoteData(noteId, userId, noteText, "", "", position, anchorNode)
+                return
+            }
         }
         
         // Save image to Firebase Storage if exists
         if (imageUri != null) {
-            val imageRef = storage.reference.child("users/$userId/notes/$noteId.jpg")
+            val imageRef = storage.reference.child("users/$userId/images/$noteId.jpg")
             
             try {
                 val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, imageUri)
