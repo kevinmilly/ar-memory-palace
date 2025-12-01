@@ -176,6 +176,12 @@ class MainActivity : AppCompatActivity() {
             val currentUser = auth.currentUser
             if (currentUser != null) {
                 currentUserId = currentUser.uid
+                
+                // If anonymous and tutorial is complete, offer to sign in
+                if (currentUser.isAnonymous && sharedPreferences.getBoolean(TUTORIAL_COMPLETED_KEY, false)) {
+                    showUpgradeAccountPrompt()
+                }
+                
                 loadNotesFromFirestore()
             } else {
                 // Start with anonymous, prompt for Google Sign-In after first note
@@ -346,6 +352,14 @@ class MainActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.menu_replay_tutorial -> {
                 replayTutorial()
+                true
+            }
+            R.id.menu_sign_in -> {
+                if (auth.currentUser?.isAnonymous == true) {
+                    signInWithGoogle()
+                } else {
+                    Toast.makeText(this, "Already signed in", Toast.LENGTH_SHORT).show()
+                }
                 true
             }
             R.id.menu_sign_out -> {
@@ -573,8 +587,10 @@ class MainActivity : AppCompatActivity() {
         imagePickerLauncher.launch("image/*")
     }
 
-    private fun placeNote(anchorNode: AnchorNode, noteText: String, imageUri: Uri?, audioPath: String? = null) {
-        noteCount++
+    private fun placeNote(anchorNode: AnchorNode, noteText: String, imageUri: Uri?, audioPath: String? = null, isLoadedNote: Boolean = false) {
+        if (!isLoadedNote) {
+            noteCount++
+        }
         
         // Create a colored cube base
         val colors = listOf(
@@ -662,8 +678,8 @@ class MainActivity : AppCompatActivity() {
                 
                 Toast.makeText(this, "Note placed!", Toast.LENGTH_SHORT).show()
                 
-                // Show upgrade prompt after first note if user is anonymous
-                if (noteCount == 1 && auth.currentUser?.isAnonymous == true) {
+                // Show upgrade prompt after first note if user is anonymous (only for new notes, not loaded ones)
+                if (!isLoadedNote && noteCount == 1 && auth.currentUser?.isAnonymous == true) {
                     showUpgradeAccountPrompt()
                 }
             }
@@ -823,14 +839,52 @@ class MainActivity : AppCompatActivity() {
             .whereEqualTo("userId", userId)
             .get()
             .addOnSuccessListener { documents ->
+                if (documents.isEmpty) {
+                    Toast.makeText(this, "No saved notes found", Toast.LENGTH_SHORT).show()
+                    return@addOnSuccessListener
+                }
+                
                 Toast.makeText(this, "Loading ${documents.size()} saved notes...", Toast.LENGTH_SHORT).show()
                 
-                for (document in documents) {
-                    document.toObject(Note::class.java)
-                    // Note: We can't perfectly relocalize without Cloud Anchors
-                    // For now, notes will be recreated at saved positions relative to device start
-                    // TODO: Add Cloud Anchors for proper world-locked persistence
-                }
+                // Wait a bit for AR session to initialize
+                window.decorView.postDelayed({
+                    val arSession = session
+                    if (arSession == null) {
+                        Toast.makeText(this, "AR session not ready, notes will load next time", Toast.LENGTH_SHORT).show()
+                        return@postDelayed
+                    }
+                    
+                    for (document in documents) {
+                        try {
+                            val note = document.toObject(Note::class.java)
+                            
+                            // Create anchor at saved position (relative to current AR session)
+                            val pose = arSession.createAnchor(
+                                com.google.ar.core.Pose(
+                                    floatArrayOf(note.positionX, note.positionY, note.positionZ),
+                                    floatArrayOf(0f, 0f, 0f, 1f)
+                                )
+                            )
+                            
+                            val anchorNode = AnchorNode(pose)
+                            anchorNode.setParent(arFragment?.arSceneView?.scene)
+                            
+                            // Recreate the note visualization
+                            val imageUri = if (note.imageUrl.isNotEmpty()) Uri.parse(note.imageUrl) else null
+                            val audioPath = if (note.audioUrl.isNotEmpty()) note.audioUrl else null
+                            
+                            placeNote(anchorNode, note.text, imageUri, audioPath, isLoadedNote = true)
+                            
+                            // Store noteId for deletion
+                            anchorNoteMap[anchorNode] = note.id
+                            
+                        } catch (e: Exception) {
+                            Toast.makeText(this, "Failed to load note: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    
+                    Toast.makeText(this, "Notes loaded!", Toast.LENGTH_SHORT).show()
+                }, 2000) // Wait 2 seconds for AR to initialize
             }
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Failed to load notes: ${e.message}", Toast.LENGTH_SHORT).show()
