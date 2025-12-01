@@ -22,16 +22,25 @@
             android:name="com.google.ar.core"
             android:value="required" />
         
+        <!-- Splash Screen - Launcher Activity -->
         <activity
-            android:name=".MainActivity"
+            android:name=".SplashActivity"
             android:exported="true"
-            android:screenOrientation="locked"
-            android:configChanges="orientation|screenSize">
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <!-- Main AR Activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:screenOrientation="locked"
+            android:configChanges="orientation|screenSize" />
+            
     </application>
 
 </manifest>
