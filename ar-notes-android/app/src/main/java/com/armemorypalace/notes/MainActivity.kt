@@ -854,6 +854,13 @@ class MainActivity : AppCompatActivity() {
                         return@postDelayed
                     }
                     
+                    // Check if AR is tracking
+                    val frame = arSession.update()
+                    if (frame.camera.trackingState != com.google.ar.core.TrackingState.TRACKING) {
+                        Toast.makeText(this, "AR not tracking yet, notes will load next time", Toast.LENGTH_SHORT).show()
+                        return@postDelayed
+                    }
+                    
                     for (document in documents) {
                         try {
                             val note = document.toObject(Note::class.java)
