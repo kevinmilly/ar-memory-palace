@@ -858,15 +858,17 @@ class MainActivity : AppCompatActivity() {
                         try {
                             val note = document.toObject(Note::class.java)
                             
-                            // Create anchor at saved position (relative to current AR session)
-                            val pose = arSession.createAnchor(
-                                com.google.ar.core.Pose(
-                                    floatArrayOf(note.positionX, note.positionY, note.positionZ),
-                                    floatArrayOf(0f, 0f, 0f, 1f)
-                                )
+                            // Create pose at saved position (relative to current AR session)
+                            // Pose expects: translation (3 floats) + rotation quaternion (4 floats)
+                            val pose = com.google.ar.core.Pose(
+                                floatArrayOf(note.positionX, note.positionY, note.positionZ),
+                                floatArrayOf(0f, 0f, 0f, 1f) // Identity quaternion (no rotation)
                             )
                             
-                            val anchorNode = AnchorNode(pose)
+                            // Create anchor from the pose
+                            val anchor = arSession.createAnchor(pose)
+                            
+                            val anchorNode = AnchorNode(anchor)
                             anchorNode.setParent(arFragment?.arSceneView?.scene)
                             
                             // Recreate the note visualization
