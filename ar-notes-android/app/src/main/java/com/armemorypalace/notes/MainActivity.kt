@@ -990,8 +990,9 @@ class MainActivity : AppCompatActivity() {
                 
                 Toast.makeText(this, "Note restored at exact location! 📍", Toast.LENGTH_SHORT).show()
             }
-            com.google.ar.core.Anchor.CloudAnchorState.ERROR_RESOLVING,
-            com.google.ar.core.Anchor.CloudAnchorState.ERROR_CLOUD_ID_NOT_FOUND -> {
+            com.google.ar.core.Anchor.CloudAnchorState.ERROR_INTERNAL,
+            com.google.ar.core.Anchor.CloudAnchorState.ERROR_CLOUD_ID_NOT_FOUND,
+            com.google.ar.core.Anchor.CloudAnchorState.ERROR_RESOLVING_LOCALIZATION_NO_MATCH -> {
                 Toast.makeText(this, "Could not find note's location", Toast.LENGTH_SHORT).show()
             }
             else -> {
