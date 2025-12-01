@@ -25,6 +25,11 @@
             android:name="com.google.ar.core"
             android:value="required" />
         
+        <!-- Cloud Anchors API Key - Replace YOUR_API_KEY with actual key from Google Cloud Console -->
+        <meta-data
+            android:name="com.google.android.ar.API_KEY"
+            android:value="YOUR_API_KEY" />
+        
         <!-- Splash Screen - Launcher Activity -->
         <activity
             android:name=".SplashActivity"

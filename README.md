@@ -1,6 +1,33 @@
 # AR Memory Palace
 
-Android AR app for creating spatial notes with text, images, and audio.
+Android AR app for creating spatial notes with text, images, and audio using ARCore Cloud Anchors for world-locked positioning.
+
+## Setup Requirements
+
+### 1. Google Cloud Platform API Key (Required for Cloud Anchors)
+
+Cloud Anchors enable notes to be "stuck" to exact real-world locations.
+
+**Steps:**
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Create a new project or select existing
+3. Enable **ARCore API**:
+   - Navigate to "APIs & Services" → "Library"
+   - Search for "ARCore API"
+   - Click "Enable"
+4. Create API Key:
+   - Go to "APIs & Services" → "Credentials"
+   - Click "Create Credentials" → "API Key"
+   - Copy the API key
+5. **Update AndroidManifest.xml**:
+   ```xml
+   <meta-data
+       android:name="com.google.android.ar.API_KEY"
+       android:value="YOUR_ACTUAL_API_KEY" />
+   ```
+   Replace `YOUR_API_KEY` with your actual key
+
+**Important:** Without this API key, notes will only use relative positions (not world-locked).
 
 ## Firebase Storage Rules
 

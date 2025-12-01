@@ -57,7 +57,8 @@ data class Note(
     val text: String = "",
     val imageUrl: String = "",
     val audioUrl: String = "",
-    val positionX: Float = 0f,
+    val cloudAnchorId: String = "",  // Cloud Anchor ID for world-locked positioning
+    val positionX: Float = 0f,  // Fallback position if Cloud Anchor fails
     val positionY: Float = 0f,
     val positionZ: Float = 0f,
     val timestamp: Long = System.currentTimeMillis()
@@ -310,6 +311,8 @@ class MainActivity : AppCompatActivity() {
                     planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
                     // Disable light estimation to reduce lag significantly
                     lightEstimationMode = Config.LightEstimationMode.DISABLED
+                    // Enable Cloud Anchors for persistent world-locked positioning
+                    cloudAnchorMode = Config.CloudAnchorMode.ENABLED
                 }
                 configure(config)
             }
@@ -812,19 +815,64 @@ class MainActivity : AppCompatActivity() {
     
     private fun saveNoteData(noteId: String, userId: String, text: String, imageUrl: String, 
                             audioUrl: String, position: Vector3, anchorNode: AnchorNode) {
+        // Store noteId in map for deletion
+        anchorNoteMap[anchorNode] = noteId
+        
+        // Host the anchor to Google Cloud for world-locked persistence
+        val anchor = anchorNode.anchor
+        if (anchor != null) {
+            val cloudAnchor = session?.hostCloudAnchorWithTtl(anchor, 365) // 1 year TTL
+            if (cloudAnchor != null) {
+                // Monitor cloud anchor state
+                checkCloudAnchorState(cloudAnchor, noteId, userId, text, imageUrl, audioUrl, position)
+                Toast.makeText(this, "Uploading note to cloud...", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+        
+        // Fallback if Cloud Anchor hosting fails - save with position only
+        saveNoteDataToFirestore(noteId, userId, text, imageUrl, audioUrl, "", position)
+    }
+    
+    private fun checkCloudAnchorState(cloudAnchor: com.google.ar.core.Anchor, noteId: String, 
+                                      userId: String, text: String, imageUrl: String, 
+                                      audioUrl: String, position: Vector3) {
+        // Check state every frame until it's hosted
+        window.decorView.postDelayed({
+            val state = cloudAnchor.cloudAnchorState
+            when (state) {
+                com.google.ar.core.Anchor.CloudAnchorState.SUCCESS -> {
+                    val cloudAnchorId = cloudAnchor.cloudAnchorId
+                    Toast.makeText(this, "Note anchored to real world! ☁️", Toast.LENGTH_SHORT).show()
+                    saveNoteDataToFirestore(noteId, userId, text, imageUrl, audioUrl, cloudAnchorId, position)
+                }
+                com.google.ar.core.Anchor.CloudAnchorState.ERROR_HOSTING_DATASET_PROCESSING_FAILED,
+                com.google.ar.core.Anchor.CloudAnchorState.ERROR_CLOUD_ID_NOT_FOUND,
+                com.google.ar.core.Anchor.CloudAnchorState.ERROR_HOSTING_SERVICE_UNAVAILABLE -> {
+                    Toast.makeText(this, "Cloud anchor failed, saving with position", Toast.LENGTH_SHORT).show()
+                    saveNoteDataToFirestore(noteId, userId, text, imageUrl, audioUrl, "", position)
+                }
+                else -> {
+                    // Still processing, check again
+                    checkCloudAnchorState(cloudAnchor, noteId, userId, text, imageUrl, audioUrl, position)
+                }
+            }
+        }, 100)
+    }
+    
+    private fun saveNoteDataToFirestore(noteId: String, userId: String, text: String, imageUrl: String, 
+                                       audioUrl: String, cloudAnchorId: String, position: Vector3) {
         val note = Note(
             id = noteId,
             userId = userId,
             text = text,
             imageUrl = imageUrl,
             audioUrl = audioUrl,
+            cloudAnchorId = cloudAnchorId,
             positionX = position.x,
             positionY = position.y,
             positionZ = position.z
         )
-        
-        // Store noteId in map for deletion
-        anchorNoteMap[anchorNode] = noteId
         
         firestore.collection("notes")
             .document(noteId)
@@ -870,32 +918,35 @@ class MainActivity : AppCompatActivity() {
                         try {
                             val note = document.toObject(Note::class.java)
                             
-                            // Validate position data
-                            if (note.positionX == 0f && note.positionY == 0f && note.positionZ == 0f) {
-                                // Skip notes with invalid position
-                                continue
+                            // Try to resolve Cloud Anchor first (world-locked position)
+                            if (note.cloudAnchorId.isNotEmpty()) {
+                                resolveCloudAnchor(note)
+                            } else {
+                                // Fallback: use saved position (not world-locked, but better than nothing)
+                                // Validate position data
+                                if (note.positionX == 0f && note.positionY == 0f && note.positionZ == 0f) {
+                                    continue
+                                }
+                                
+                                // Create pose at saved position (relative to current AR session)
+                                val translation = floatArrayOf(note.positionX, note.positionY, note.positionZ)
+                                val rotation = floatArrayOf(0f, 0f, 0f, 1f)
+                                
+                                val pose = com.google.ar.core.Pose(translation, rotation)
+                                val anchor = arSession.createAnchor(pose)
+                                
+                                val anchorNode = AnchorNode(anchor)
+                                anchorNode.setParent(arFragment?.arSceneView?.scene)
+                                
+                                // Recreate the note visualization
+                                val imageUri = if (note.imageUrl.isNotEmpty()) Uri.parse(note.imageUrl) else null
+                                val audioPath = if (note.audioUrl.isNotEmpty()) note.audioUrl else null
+                                
+                                placeNote(anchorNode, note.text, imageUri, audioPath, isLoadedNote = true)
+                                
+                                // Store noteId for deletion
+                                anchorNoteMap[anchorNode] = note.id
                             }
-                            
-                            // Create pose at saved position (relative to current AR session)
-                            val translation = floatArrayOf(note.positionX, note.positionY, note.positionZ)
-                            val rotation = floatArrayOf(0f, 0f, 0f, 1f) // Identity quaternion (no rotation)
-                            
-                            val pose = com.google.ar.core.Pose(translation, rotation)
-                            
-                            // Create anchor from the pose
-                            val anchor = arSession.createAnchor(pose)
-                            
-                            val anchorNode = AnchorNode(anchor)
-                            anchorNode.setParent(arFragment?.arSceneView?.scene)
-                            
-                            // Recreate the note visualization
-                            val imageUri = if (note.imageUrl.isNotEmpty()) Uri.parse(note.imageUrl) else null
-                            val audioPath = if (note.audioUrl.isNotEmpty()) note.audioUrl else null
-                            
-                            placeNote(anchorNode, note.text, imageUri, audioPath, isLoadedNote = true)
-                            
-                            // Store noteId for deletion
-                            anchorNoteMap[anchorNode] = note.id
                             
                         } catch (e: Exception) {
                             android.util.Log.e("MainActivity", "Failed to load note", e)
@@ -909,6 +960,47 @@ class MainActivity : AppCompatActivity() {
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Failed to load notes: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+    }
+    
+    private fun resolveCloudAnchor(note: Note) {
+        val arSession = session ?: return
+        
+        val cloudAnchor = arSession.resolveCloudAnchor(note.cloudAnchorId)
+        
+        // Monitor resolution state
+        window.decorView.postDelayed({
+            checkCloudAnchorResolution(cloudAnchor, note)
+        }, 100)
+    }
+    
+    private fun checkCloudAnchorResolution(cloudAnchor: com.google.ar.core.Anchor, note: Note) {
+        val state = cloudAnchor.cloudAnchorState
+        
+        when (state) {
+            com.google.ar.core.Anchor.CloudAnchorState.SUCCESS -> {
+                // Cloud Anchor resolved! This is the exact real-world position
+                val anchorNode = AnchorNode(cloudAnchor)
+                anchorNode.setParent(arFragment?.arSceneView?.scene)
+                
+                val imageUri = if (note.imageUrl.isNotEmpty()) Uri.parse(note.imageUrl) else null
+                val audioPath = if (note.audioUrl.isNotEmpty()) note.audioUrl else null
+                
+                placeNote(anchorNode, note.text, imageUri, audioPath, isLoadedNote = true)
+                anchorNoteMap[anchorNode] = note.id
+                
+                Toast.makeText(this, "Note restored at exact location! 📍", Toast.LENGTH_SHORT).show()
+            }
+            com.google.ar.core.Anchor.CloudAnchorState.ERROR_RESOLVING,
+            com.google.ar.core.Anchor.CloudAnchorState.ERROR_CLOUD_ID_NOT_FOUND -> {
+                Toast.makeText(this, "Could not find note's location", Toast.LENGTH_SHORT).show()
+            }
+            else -> {
+                // Still resolving, check again
+                window.decorView.postDelayed({
+                    checkCloudAnchorResolution(cloudAnchor, note)
+                }, 100)
+            }
+        }
     }
     
     private fun deleteNoteFromFirestore(noteId: String) {
