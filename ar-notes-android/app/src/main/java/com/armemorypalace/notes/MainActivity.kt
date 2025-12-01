@@ -588,10 +588,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun placeNote(anchorNode: AnchorNode, noteText: String, imageUri: Uri?, audioPath: String? = null, isLoadedNote: Boolean = false) {
-        if (!isLoadedNote) {
-            noteCount++
-        }
-        
         // Create a colored cube base
         val colors = listOf(
             android.graphics.Color.parseColor("#4CAF50"),
@@ -599,7 +595,16 @@ class MainActivity : AppCompatActivity() {
             android.graphics.Color.parseColor("#FF5722"),
             android.graphics.Color.parseColor("#FFC107")
         )
-        val color = colors[(noteCount - 1) % colors.size]
+        
+        // Get color based on current noteCount (use absolute value to avoid negative index)
+        val colorIndex = if (!isLoadedNote) {
+            noteCount++
+            (noteCount - 1) % colors.size
+        } else {
+            // For loaded notes, use a random color or cycle through based on position
+            kotlin.math.abs(noteText.hashCode()) % colors.size
+        }
+        val color = colors[colorIndex]
 
         MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(color))
             .thenAccept { material ->
