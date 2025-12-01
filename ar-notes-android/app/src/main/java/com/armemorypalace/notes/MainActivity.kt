@@ -37,8 +37,18 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
+import android.media.MediaRecorder
+import android.media.MediaPlayer
+import java.io.File
 import java.io.ByteArrayOutputStream
 import java.util.UUID
+import android.content.Context
+import android.content.SharedPreferences
+import android.view.View
+import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
+import android.view.Menu
+import android.view.MenuItem
 
 // Data model for notes
 data class Note(
@@ -46,6 +56,7 @@ data class Note(
     val userId: String = "",
     val text: String = "",
     val imageUrl: String = "",
+    val audioUrl: String = "",
     val positionX: Float = 0f,
     val positionY: Float = 0f,
     val positionZ: Float = 0f,
@@ -74,11 +85,32 @@ class MainActivity : AppCompatActivity() {
     // Map to store noteId for each anchor node
     private val anchorNoteMap = mutableMapOf<AnchorNode, String>()
 
+    // Audio recording
+    private var mediaRecorder: MediaRecorder? = null
+    private var mediaPlayer: MediaPlayer? = null
+    private var audioFilePath: String? = null
+    private var isRecording = false
+
+    // Tutorial
+    private lateinit var tutorialOverlay: View
+    private lateinit var tutorialStepIndicator: TextView
+    private lateinit var tutorialIcon: TextView
+    private lateinit var tutorialTitle: TextView
+    private lateinit var tutorialMessage: TextView
+    private lateinit var tutorialNextButton: TextView
+    private lateinit var tutorialSkipButton: TextView
+    private lateinit var tutorialArrow: TextView
+    private var currentTutorialStep = 0
+    private lateinit var sharedPreferences: SharedPreferences
+
     // ActivityResultLauncher for picking images
     private lateinit var imagePickerLauncher: ActivityResultLauncher<String>
 
     companion object {
         private const val CAMERA_PERMISSION_CODE = 0
+        private const val AUDIO_PERMISSION_CODE = 1
+        private const val PREFS_NAME = "ARMemoryPalacePrefs"
+        private const val TUTORIAL_COMPLETED_KEY = "tutorialCompleted"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,19 +119,25 @@ class MainActivity : AppCompatActivity() {
 
         arFragment = supportFragmentManager.findFragmentById(R.id.arFragment) as? ArFragment
 
+        // Initialize SharedPreferences
+        sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // Initialize tutorial views
+        initializeTutorial()
+
         // Initialize the ActivityResultLauncher
         imagePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
             if (uri != null) {
                 pendingAnchor?.let { anchor ->
                     pendingNoteText?.let { text ->
-                        placeNote(anchor, text, uri)
+                        placeNote(anchor, text, uri, null)
                     }
                 }
             } else {
                 // User cancelled image picker, place text-only note
                 pendingAnchor?.let { anchor ->
                     pendingNoteText?.let { text ->
-                        placeNote(anchor, text, null)
+                        placeNote(anchor, text, null, null)
                     }
                 }
             }
@@ -304,9 +342,33 @@ class MainActivity : AppCompatActivity() {
         session?.pause()
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.menu_replay_tutorial -> {
+                replayTutorial()
+                true
+            }
+            R.id.menu_sign_out -> {
+                auth.signOut()
+                googleSignInClient.signOut()
+                Toast.makeText(this, "Signed out", Toast.LENGTH_SHORT).show()
+                signInAnonymously()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         session?.close()
+        mediaRecorder?.release()
+        mediaPlayer?.release()
     }
 
     private fun setupTapListener() {
@@ -332,48 +394,191 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showNoteInputDialog(anchorNode: AnchorNode) {
+        val options = arrayOf("Text Note", "Image Note", "Audio Note", "Cancel")
+        
+        AlertDialog.Builder(this)
+            .setTitle("Create AR Note")
+            .setItems(options) { dialog, which ->
+                when (which) {
+                    0 -> showTextNoteDialog(anchorNode)
+                    1 -> showImageNoteDialog(anchorNode)
+                    2 -> showAudioNoteDialog(anchorNode)
+                    3 -> {
+                        anchorNode.anchor?.detach()
+                        anchorNode.setParent(null)
+                    }
+                }
+            }
+            .setOnCancelListener {
+                anchorNode.anchor?.detach()
+                anchorNode.setParent(null)
+            }
+            .show()
+    }
+    
+    private fun showTextNoteDialog(anchorNode: AnchorNode) {
         val input = EditText(this)
         input.hint = "Enter your note..."
         input.setPadding(50, 30, 50, 30)
 
         AlertDialog.Builder(this)
-            .setTitle("Create AR Note")
-            .setMessage("Enter text for your note, then optionally add an image")
+            .setTitle("Text Note")
             .setView(input)
-            .setPositiveButton("Add Image") { dialog, _ ->
+            .setPositiveButton("Place") { dialog, _ ->
                 val noteText = input.text.toString()
                 if (noteText.isNotEmpty()) {
-                    pendingNoteText = noteText
-                    pendingAnchor = anchorNode
-                    pickImage()
+                    placeNote(anchorNode, noteText, null, null)
                 } else {
-                    Toast.makeText(this, "Please enter note text first", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Please enter text", Toast.LENGTH_SHORT).show()
                 }
-                dialog.dismiss()
             }
-            .setNeutralButton("Text Only") { dialog, _ ->
-                val noteText = input.text.toString()
-                if (noteText.isNotEmpty()) {
-                    placeNote(anchorNode, noteText, null)
-                } else {
-                    anchorNode.anchor?.detach()
-                    anchorNode.setParent(null)
-                }
-                dialog.dismiss()
-            }
-            .setNegativeButton("Cancel") { dialog, _ ->
+            .setNegativeButton("Cancel") { _, _ ->
                 anchorNode.anchor?.detach()
                 anchorNode.setParent(null)
-                dialog.dismiss()
             }
             .show()
+    }
+    
+    private fun showImageNoteDialog(anchorNode: AnchorNode) {
+        val input = EditText(this)
+        input.hint = "Enter note text..."
+        input.setPadding(50, 30, 50, 30)
+
+        AlertDialog.Builder(this)
+            .setTitle("Image Note")
+            .setView(input)
+            .setPositiveButton("Pick Image") { dialog, _ ->
+                val noteText = input.text.toString()
+                pendingNoteText = noteText
+                pendingAnchor = anchorNode
+                pickImage()
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                anchorNode.anchor?.detach()
+                anchorNode.setParent(null)
+            }
+            .show()
+    }
+    
+    private fun showAudioNoteDialog(anchorNode: AnchorNode) {
+        if (!checkAudioPermission()) {
+            requestAudioPermission()
+            anchorNode.anchor?.detach()
+            anchorNode.setParent(null)
+            return
+        }
+        
+        val recordButton = android.widget.Button(this)
+        recordButton.text = "Start Recording"
+        recordButton.setPadding(50, 30, 50, 30)
+        
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Audio Note")
+            .setMessage("Record your audio note")
+            .setView(recordButton)
+            .setPositiveButton("Place Note", null)
+            .setNegativeButton("Cancel") { _, _ ->
+                stopRecording()
+                anchorNode.anchor?.detach()
+                anchorNode.setParent(null)
+            }
+            .create()
+        
+        dialog.setOnShowListener {
+            val placeButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            placeButton.isEnabled = false
+            
+            recordButton.setOnClickListener {
+                if (!isRecording) {
+                    startRecording()
+                    recordButton.text = "Stop Recording"
+                    recordButton.setBackgroundColor(android.graphics.Color.RED)
+                } else {
+                    stopRecording()
+                    recordButton.text = "Recording Complete"
+                    recordButton.isEnabled = false
+                    placeButton.isEnabled = true
+                }
+            }
+            
+            placeButton.setOnClickListener {
+                audioFilePath?.let { path ->
+                    placeNote(anchorNode, "Audio Note", null, path)
+                    dialog.dismiss()
+                }
+            }
+        }
+        
+        dialog.show()
+    }
+
+    private fun checkAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == 
+            PackageManager.PERMISSION_GRANTED
+    }
+    
+    private fun requestAudioPermission() {
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.RECORD_AUDIO),
+            AUDIO_PERMISSION_CODE
+        )
+    }
+    
+    private fun startRecording() {
+        audioFilePath = "${externalCacheDir?.absolutePath}/audio_${System.currentTimeMillis()}.3gp"
+        
+        mediaRecorder = MediaRecorder().apply {
+            setAudioSource(MediaRecorder.AudioSource.MIC)
+            setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+            setOutputFile(audioFilePath)
+            setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+            
+            try {
+                prepare()
+                start()
+                isRecording = true
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Recording failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    private fun stopRecording() {
+        mediaRecorder?.apply {
+            try {
+                stop()
+                release()
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+        mediaRecorder = null
+        isRecording = false
+    }
+    
+    private fun playAudio(audioPath: String) {
+        mediaPlayer?.release()
+        mediaPlayer = MediaPlayer().apply {
+            try {
+                setDataSource(audioPath)
+                prepare()
+                start()
+                setOnCompletionListener {
+                    release()
+                    mediaPlayer = null
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Playback failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun pickImage() {
         imagePickerLauncher.launch("image/*")
     }
 
-    private fun placeNote(anchorNode: AnchorNode, noteText: String, imageUri: Uri?) {
+    private fun placeNote(anchorNode: AnchorNode, noteText: String, imageUri: Uri?, audioPath: String? = null) {
         noteCount++
         
         // Create a colored cube base
@@ -419,6 +624,15 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
                     }
                 }
+                
+                // Add audio indicator if provided
+                if (audioPath != null) {
+                    val audioIcon = TextView(this)
+                    audioIcon.text = "🔊"
+                    audioIcon.textSize = 48f
+                    audioIcon.setPadding(0, 10, 0, 10)
+                    container.addView(audioIcon)
+                }
 
                 // Add text
                 val textView = TextView(this)
@@ -440,11 +654,16 @@ class MainActivity : AppCompatActivity() {
 
                 // Make marker clickable
                 markerNode.setOnTapListener { _, _ ->
-                    showNoteDetailsDialog(noteText, imageUri, anchorNode)
+                    if (audioPath != null) {
+                        playAudio(audioPath)
+                        Toast.makeText(this, "Playing audio...", Toast.LENGTH_SHORT).show()
+                    } else {
+                        showNoteDetailsDialog(noteText, imageUri, anchorNode)
+                    }
                 }
 
                 // Save note to Firestore
-                saveNoteToFirestore(noteText, imageUri, anchorNode)
+                saveNoteToFirestore(noteText, imageUri, audioPath, anchorNode)
                 
                 Toast.makeText(this, "Note placed!", Toast.LENGTH_SHORT).show()
             }
@@ -499,7 +718,7 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
-    private fun saveNoteToFirestore(noteText: String, imageUri: Uri?, anchorNode: AnchorNode) {
+    private fun saveNoteToFirestore(noteText: String, imageUri: Uri?, audioPath: String?, anchorNode: AnchorNode) {
         val userId = currentUserId ?: run {
             // Firebase not initialized, skip saving
             return
@@ -508,6 +727,24 @@ class MainActivity : AppCompatActivity() {
         
         // Get anchor position
         val position = anchorNode.worldPosition
+        
+        // Save audio to Firebase Storage if exists
+        if (audioPath != null) {
+            val audioFile = File(audioPath)
+            val audioRef = storage.reference.child("users/$userId/notes/$noteId.3gp")
+            
+            audioRef.putFile(Uri.fromFile(audioFile))
+                .addOnSuccessListener { _ ->
+                    audioRef.downloadUrl.addOnSuccessListener { uri ->
+                        saveNoteData(noteId, userId, noteText, "", uri.toString(), position, anchorNode)
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Toast.makeText(this, "Failed to upload audio: ${e.message}", Toast.LENGTH_SHORT).show()
+                    saveNoteData(noteId, userId, noteText, "", "", position, anchorNode)
+                }
+            return
+        }
         
         // Save image to Firebase Storage if exists
         if (imageUri != null) {
@@ -522,28 +759,29 @@ class MainActivity : AppCompatActivity() {
                 imageRef.putBytes(data)
                     .addOnSuccessListener { _ ->
                         imageRef.downloadUrl.addOnSuccessListener { uri ->
-                            saveNoteData(noteId, userId, noteText, uri.toString(), position, anchorNode)
+                            saveNoteData(noteId, userId, noteText, uri.toString(), "", position, anchorNode)
                         }
                     }
                     .addOnFailureListener { e ->
                         Toast.makeText(this, "Failed to upload image: ${e.message}", Toast.LENGTH_SHORT).show()
-                        saveNoteData(noteId, userId, noteText, "", position, anchorNode)
+                        saveNoteData(noteId, userId, noteText, "", "", position, anchorNode)
                     }
             } catch (e: Exception) {
-                saveNoteData(noteId, userId, noteText, "", position, anchorNode)
+                saveNoteData(noteId, userId, noteText, "", "", position, anchorNode)
             }
         } else {
-            saveNoteData(noteId, userId, noteText, "", position, anchorNode)
+            saveNoteData(noteId, userId, noteText, "", "", position, anchorNode)
         }
     }
     
     private fun saveNoteData(noteId: String, userId: String, text: String, imageUrl: String, 
-                            position: Vector3, anchorNode: AnchorNode) {
+                            audioUrl: String, position: Vector3, anchorNode: AnchorNode) {
         val note = Note(
             id = noteId,
             userId = userId,
             text = text,
             imageUrl = imageUrl,
+            audioUrl = audioUrl,
             positionX = position.x,
             positionY = position.y,
             positionZ = position.z
@@ -594,5 +832,136 @@ class MainActivity : AppCompatActivity() {
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Failed to delete: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+    }
+
+    // ============================================================
+    // TUTORIAL METHODS
+    // ============================================================
+
+    private fun initializeTutorial() {
+        tutorialOverlay = findViewById(R.id.tutorialOverlay)
+        tutorialStepIndicator = findViewById(R.id.tutorialStepIndicator)
+        tutorialIcon = findViewById(R.id.tutorialIcon)
+        tutorialTitle = findViewById(R.id.tutorialTitle)
+        tutorialMessage = findViewById(R.id.tutorialMessage)
+        tutorialNextButton = findViewById(R.id.tutorialNextButton)
+        tutorialSkipButton = findViewById(R.id.tutorialSkipButton)
+        tutorialArrow = findViewById(R.id.tutorialArrow)
+
+        // Check if tutorial has been completed
+        val tutorialCompleted = sharedPreferences.getBoolean(TUTORIAL_COMPLETED_KEY, false)
+        
+        if (!tutorialCompleted) {
+            // Show tutorial on first launch
+            showTutorial()
+        } else {
+            // Hide tutorial overlay
+            tutorialOverlay.visibility = View.GONE
+        }
+
+        // Set up button listeners
+        tutorialNextButton.setOnClickListener {
+            nextTutorialStep()
+        }
+
+        tutorialSkipButton.setOnClickListener {
+            skipTutorial()
+        }
+    }
+
+    private fun showTutorial() {
+        currentTutorialStep = 0
+        tutorialOverlay.visibility = View.VISIBLE
+        updateTutorialStep()
+        
+        // Fade in animation
+        val fadeIn = AlphaAnimation(0f, 1f)
+        fadeIn.duration = 300
+        tutorialOverlay.startAnimation(fadeIn)
+    }
+
+    private fun nextTutorialStep() {
+        currentTutorialStep++
+        
+        if (currentTutorialStep > 2) {
+            // Tutorial complete
+            completeTutorial()
+        } else {
+            updateTutorialStep()
+        }
+    }
+
+    private fun updateTutorialStep() {
+        when (currentTutorialStep) {
+            0 -> {
+                tutorialStepIndicator.text = "STEP 1 OF 3"
+                tutorialIcon.text = "📱"
+                tutorialTitle.text = "Welcome to AR Memory Palace"
+                tutorialMessage.text = "Move your phone slowly to scan your environment and detect surfaces"
+                tutorialArrow.visibility = View.GONE
+                tutorialNextButton.text = "NEXT"
+            }
+            1 -> {
+                tutorialStepIndicator.text = "STEP 2 OF 3"
+                tutorialIcon.text = "👆"
+                tutorialTitle.text = "Place Your Notes"
+                tutorialMessage.text = "Tap on a detected surface (you'll see white dots) to place a spatial note"
+                tutorialArrow.visibility = View.VISIBLE
+                animateArrow()
+                tutorialNextButton.text = "NEXT"
+            }
+            2 -> {
+                tutorialStepIndicator.text = "STEP 3 OF 3"
+                tutorialIcon.text = "🎤📷✍️"
+                tutorialTitle.text = "Add Rich Content"
+                tutorialMessage.text = "When placing a note, you can choose to add text, images, or audio recordings"
+                tutorialArrow.visibility = View.GONE
+                tutorialNextButton.text = "GET STARTED"
+            }
+        }
+        
+        // Fade transition animation
+        val fadeTransition = AlphaAnimation(0.7f, 1f)
+        fadeTransition.duration = 200
+        tutorialTitle.startAnimation(fadeTransition)
+        tutorialMessage.startAnimation(fadeTransition)
+    }
+
+    private fun animateArrow() {
+        // Pulsing animation for the arrow
+        val pulse = AlphaAnimation(0.3f, 1f)
+        pulse.duration = 800
+        pulse.repeatMode = Animation.REVERSE
+        pulse.repeatCount = Animation.INFINITE
+        tutorialArrow.startAnimation(pulse)
+    }
+
+    private fun skipTutorial() {
+        completeTutorial()
+    }
+
+    private fun completeTutorial() {
+        // Mark tutorial as completed in SharedPreferences
+        sharedPreferences.edit()
+            .putBoolean(TUTORIAL_COMPLETED_KEY, true)
+            .apply()
+        
+        // Fade out and hide
+        val fadeOut = AlphaAnimation(1f, 0f)
+        fadeOut.duration = 300
+        fadeOut.setAnimationListener(object : Animation.AnimationListener {
+            override fun onAnimationStart(animation: Animation?) {}
+            override fun onAnimationEnd(animation: Animation?) {
+                tutorialOverlay.visibility = View.GONE
+            }
+            override fun onAnimationRepeat(animation: Animation?) {}
+        })
+        tutorialOverlay.startAnimation(fadeOut)
+    }
+
+    fun replayTutorial() {
+        // Public method to replay tutorial (can be called from menu)
+        currentTutorialStep = 0
+        showTutorial()
     }
 }

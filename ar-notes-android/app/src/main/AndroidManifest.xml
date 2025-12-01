@@ -10,6 +10,9 @@
     
     <!-- Internet for Firebase -->
     <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- Audio recording permission -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:allowBackup="true"
