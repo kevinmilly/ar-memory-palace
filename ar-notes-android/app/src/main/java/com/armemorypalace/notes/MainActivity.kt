@@ -833,7 +833,7 @@ class MainActivity : AppCompatActivity() {
         // Host the anchor to Google Cloud for world-locked persistence
         val anchor = anchorNode.anchor
         if (anchor != null) {
-            val cloudAnchor = session?.hostCloudAnchorWithTtl(anchor, 365) // 1 year TTL
+            val cloudAnchor = session?.hostCloudAnchorWithTtl(anchor, 1) // 1 day TTL (max for free tier)
             if (cloudAnchor != null) {
                 // Monitor cloud anchor state
                 checkCloudAnchorState(cloudAnchor, noteId, userId, text, imageUrl, audioUrl, position)
