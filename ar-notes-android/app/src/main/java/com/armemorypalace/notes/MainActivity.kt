@@ -858,12 +858,17 @@ class MainActivity : AppCompatActivity() {
                         try {
                             val note = document.toObject(Note::class.java)
                             
+                            // Validate position data
+                            if (note.positionX == 0f && note.positionY == 0f && note.positionZ == 0f) {
+                                // Skip notes with invalid position
+                                continue
+                            }
+                            
                             // Create pose at saved position (relative to current AR session)
-                            // Pose expects: translation (3 floats) + rotation quaternion (4 floats)
-                            val pose = com.google.ar.core.Pose(
-                                floatArrayOf(note.positionX, note.positionY, note.positionZ),
-                                floatArrayOf(0f, 0f, 0f, 1f) // Identity quaternion (no rotation)
-                            )
+                            val translation = floatArrayOf(note.positionX, note.positionY, note.positionZ)
+                            val rotation = floatArrayOf(0f, 0f, 0f, 1f) // Identity quaternion (no rotation)
+                            
+                            val pose = com.google.ar.core.Pose(translation, rotation)
                             
                             // Create anchor from the pose
                             val anchor = arSession.createAnchor(pose)
@@ -881,7 +886,8 @@ class MainActivity : AppCompatActivity() {
                             anchorNoteMap[anchorNode] = note.id
                             
                         } catch (e: Exception) {
-                            Toast.makeText(this, "Failed to load note: ${e.message}", Toast.LENGTH_SHORT).show()
+                            android.util.Log.e("MainActivity", "Failed to load note", e)
+                            Toast.makeText(this, "Failed to load note: ${e.javaClass.simpleName}", Toast.LENGTH_SHORT).show()
                         }
                     }
                     
