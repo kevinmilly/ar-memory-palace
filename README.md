@@ -27,7 +27,24 @@ Cloud Anchors enable notes to be "stuck" to exact real-world locations.
    ```
    Replace `YOUR_API_KEY` with your actual key
 
-**Important:** Without this API key, notes will only use relative positions (not world-locked).
+**For 365-day Cloud Anchor TTL (instead of 24-hour limit):**
+
+The API key method limits you to 24-hour TTL. To get 365-day persistence:
+
+1. **Enable OAuth 2.0 for Cloud Anchors**:
+   - In Google Cloud Console → APIs & Services → Credentials
+   - Find your Android app's OAuth 2.0 Client ID
+   - Make sure it has these scopes enabled:
+     - `https://www.googleapis.com/auth/cloud-platform`
+     - `https://www.googleapis.com/auth/arcore-anchor`
+
+2. **In Firebase Console** → Authentication → Sign-in method:
+   - Ensure Google Sign-In is enabled
+   - The OAuth client ID should match your Android app
+
+3. **The app will automatically use OAuth** when users sign in with Google, enabling 365-day TTL
+
+**Current setup:** Uses Firebase Auth token which supports 365-day TTL when properly configured.
 
 ## Firebase Storage Rules
 
