@@ -168,10 +168,14 @@ class MainActivity : AppCompatActivity() {
             
             android.util.Log.d("MainActivity", "Firebase initialized successfully")
             
-            // Configure Google Sign-In
+            // Configure Google Sign-In with Cloud Anchor scopes
             val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestIdToken(getString(R.string.default_web_client_id))
                 .requestEmail()
+                .requestScopes(
+                    com.google.android.gms.common.api.Scope("https://www.googleapis.com/auth/cloud-platform"),
+                    com.google.android.gms.common.api.Scope("https://www.googleapis.com/auth/arcore")
+                )
                 .build()
             googleSignInClient = GoogleSignIn.getClient(this, gso)
             
