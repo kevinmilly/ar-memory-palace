@@ -201,8 +201,28 @@ class MainActivity : AppCompatActivity() {
             android.util.Log.e("MainActivity", "Firebase initialization failed", e)
         }
 
+        // Setup Sign In button
+        setupSignInButton()
+        
         // Check ARCore availability
         checkARCoreAvailability()
+    }
+    
+    private fun setupSignInButton() {
+        val fabSignIn = findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.fabSignIn)
+        
+        // Show button if user is anonymous
+        auth.addAuthStateListener { firebaseAuth ->
+            val user = firebaseAuth.currentUser
+            if (user?.isAnonymous == true) {
+                fabSignIn.visibility = android.view.View.VISIBLE
+                fabSignIn.setOnClickListener {
+                    signInWithGoogle()
+                }
+            } else {
+                fabSignIn.visibility = android.view.View.GONE
+            }
+        }
     }
     
     private fun signInAnonymously() {

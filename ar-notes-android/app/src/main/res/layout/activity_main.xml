@@ -12,4 +12,15 @@
     <!-- Tutorial Overlay (included from separate layout) -->
     <include layout="@layout/tutorial_overlay" />
 
+    <!-- Sign In Button (Floating) -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabSignIn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp"
+        android:contentDescription="Sign in with Google"
+        android:src="@android:drawable/ic_menu_upload"
+        android:visibility="gone" />
+
 </FrameLayout>
