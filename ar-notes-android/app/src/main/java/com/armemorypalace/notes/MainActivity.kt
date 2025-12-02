@@ -211,17 +211,29 @@ class MainActivity : AppCompatActivity() {
     private fun setupSignInButton() {
         val fabSignIn = findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.fabSignIn)
         
+        fabSignIn.setOnClickListener {
+            signInWithGoogle()
+        }
+        
         // Show button if user is anonymous
         auth.addAuthStateListener { firebaseAuth ->
             val user = firebaseAuth.currentUser
+            android.util.Log.d("MainActivity", "Auth state changed. Anonymous: ${user?.isAnonymous}, UserId: ${user?.uid}")
+            
             if (user?.isAnonymous == true) {
                 fabSignIn.visibility = android.view.View.VISIBLE
-                fabSignIn.setOnClickListener {
-                    signInWithGoogle()
-                }
-            } else {
+                android.util.Log.d("MainActivity", "Showing sign-in button")
+            } else if (user != null) {
                 fabSignIn.visibility = android.view.View.GONE
+                android.util.Log.d("MainActivity", "Hiding sign-in button (signed in)")
             }
+        }
+        
+        // Also check immediately
+        val currentUser = auth.currentUser
+        if (currentUser?.isAnonymous == true) {
+            fabSignIn.visibility = android.view.View.VISIBLE
+            android.util.Log.d("MainActivity", "Initial check: showing button for anonymous user")
         }
     }
     
