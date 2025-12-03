@@ -14,7 +14,15 @@
       },
       "oauth_client": [
         {
-          "client_id": "756720016237-ehs53qnrd5g7g6g9eqicit7skqhi9r61.apps.googleusercontent.com",
+          "client_id": "756720016237-j10nk6570rl4n2thk6nl0gf56ephqgmb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.armemorypalace.notes",
+            "certificate_hash": "587b3504cd0fb9a469ce8725d5e495c72040f637"
+          }
+        },
+        {
+          "client_id": "756720016237-uvl0maada64nbhil24p15jng097d3d1s.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
