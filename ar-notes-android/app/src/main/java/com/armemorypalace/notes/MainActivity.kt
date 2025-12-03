@@ -168,14 +168,10 @@ class MainActivity : AppCompatActivity() {
             
             android.util.Log.d("MainActivity", "Firebase initialized successfully")
             
-            // Configure Google Sign-In with Cloud Anchor scopes
+            // Configure Google Sign-In
             val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestIdToken(getString(R.string.default_web_client_id))
                 .requestEmail()
-                .requestScopes(
-                    com.google.android.gms.common.api.Scope("https://www.googleapis.com/auth/cloud-platform"),
-                    com.google.android.gms.common.api.Scope("https://www.googleapis.com/auth/arcore")
-                )
                 .build()
             googleSignInClient = GoogleSignIn.getClient(this, gso)
             
@@ -869,7 +865,7 @@ class MainActivity : AppCompatActivity() {
         // Host the anchor to Google Cloud for world-locked persistence
         val anchor = anchorNode.anchor
         if (anchor != null) {
-            val cloudAnchor = session?.hostCloudAnchorWithTtl(anchor, 365) // 365 day TTL with OAuth
+            val cloudAnchor = session?.hostCloudAnchorWithTtl(anchor, 1) // 1 day TTL (free tier max)
             if (cloudAnchor != null) {
                 // Monitor cloud anchor state
                 checkCloudAnchorState(cloudAnchor, noteId, userId, text, imageUrl, audioUrl, position)
