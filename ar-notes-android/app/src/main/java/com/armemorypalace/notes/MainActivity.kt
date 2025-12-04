@@ -1100,11 +1100,6 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Failed to load notes: ${e.message}", Toast.LENGTH_SHORT).show()
             }
     }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Failed to load notes: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-    }
-    
 
     private fun deleteNoteFromFirestore(noteId: String) {
         firestore.collection("notes")
