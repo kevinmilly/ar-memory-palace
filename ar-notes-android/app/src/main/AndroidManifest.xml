@@ -25,10 +25,7 @@
             android:name="com.google.ar.core"
             android:value="required" />
         
-        <!-- Cloud Anchors API Key -->
-        <meta-data
-            android:name="com.google.android.ar.API_KEY"
-            android:value="AIzaSyCELbH9SRMT2BeVnUSOXnWfXgcHFm538A0" />
+        <!-- Cloud Anchors uses keyless OAuth auth (no API key needed for 365-day TTL) -->
         
         <!-- Splash Screen - Launcher Activity -->
         <activity

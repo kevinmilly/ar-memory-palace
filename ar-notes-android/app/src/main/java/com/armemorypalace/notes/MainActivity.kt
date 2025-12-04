@@ -50,15 +50,25 @@ import android.view.animation.Animation
 import android.view.Menu
 import android.view.MenuItem
 
-// Data model for notes
+// Data model for notes - Room-based relative positioning
 data class Note(
     val id: String = "",
     val userId: String = "",
     val text: String = "",
     val imageUrl: String = "",
     val audioUrl: String = "",
-    val cloudAnchorId: String = "",  // Cloud Anchor ID for world-locked positioning
-    val positionX: Float = 0f,  // Fallback position if Cloud Anchor fails
+    // Room-based positioning (new system)
+    val roomId: String = "",
+    val localPosX: Float = 0f,
+    val localPosY: Float = 0f,
+    val localPosZ: Float = 0f,
+    val localRotX: Float = 0f,
+    val localRotY: Float = 0f,
+    val localRotZ: Float = 0f,
+    val localRotW: Float = 1f,
+    // Legacy fields (for backwards compatibility)
+    val cloudAnchorId: String = "",  // Deprecated - not used
+    val positionX: Float = 0f,  // Fallback for migration
     val positionY: Float = 0f,
     val positionZ: Float = 0f,
     val timestamp: Long = System.currentTimeMillis()
@@ -79,9 +89,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var storage: FirebaseStorage
     private var currentUserId: String? = null
     
-    // Google Sign-In
+    // Google Sign-In (for Firebase user authentication)
     private lateinit var googleSignInClient: GoogleSignInClient
     private lateinit var googleSignInLauncher: ActivityResultLauncher<android.content.Intent>
+    
+    // Room system for spatial walkthrough
+    private var currentRoomId: String = "default-room"
+    private var roomOriginAnchor: com.google.ar.core.Anchor? = null
+    private var isAlignRoomMode: Boolean = false
     
     // Map to store noteId for each anchor node
     private val anchorNoteMap = mutableMapOf<AnchorNode, String>()
@@ -343,7 +358,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Create AR session
+            // Create AR session with local anchors only
             session = Session(this).apply {
                 val config = Config(this).apply {
                     updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
@@ -351,8 +366,7 @@ class MainActivity : AppCompatActivity() {
                     planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
                     // Disable light estimation to reduce lag significantly
                     lightEstimationMode = Config.LightEstimationMode.DISABLED
-                    // Enable Cloud Anchors for persistent world-locked positioning
-                    cloudAnchorMode = Config.CloudAnchorMode.ENABLED
+                    // Cloud Anchors disabled - using local room-relative positioning
                 }
                 configure(config)
             }
@@ -393,6 +407,39 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.menu_align_room -> {
+                isAlignRoomMode = true
+                Toast.makeText(this, "Tap a surface to set room origin for $currentRoomId", Toast.LENGTH_LONG).show()
+                true
+            }
+            R.id.menu_start_walkthrough -> {
+                AlertDialog.Builder(this)
+                    .setTitle("Start Walkthrough")
+                    .setMessage("Select a room from the menu, then tap 'Align Room' and tap a surface to set the room origin. Your notes will appear!")
+                    .setPositiveButton("OK", null)
+                    .show()
+                true
+            }
+            R.id.menu_room_kitchen -> {
+                switchRoom("Kitchen")
+                true
+            }
+            R.id.menu_room_bathroom -> {
+                switchRoom("Bathroom")
+                true
+            }
+            R.id.menu_room_living_room -> {
+                switchRoom("Living Room")
+                true
+            }
+            R.id.menu_room_office -> {
+                switchRoom("Office")
+                true
+            }
+            R.id.menu_room_bedroom -> {
+                switchRoom("Bedroom")
+                true
+            }
             R.id.menu_replay_tutorial -> {
                 replayTutorial()
                 true
@@ -415,6 +462,20 @@ class MainActivity : AppCompatActivity() {
             else -> super.onOptionsItemSelected(item)
         }
     }
+    
+    private fun switchRoom(roomName: String) {
+        currentRoomId = roomName
+        roomOriginAnchor = null
+        
+        // Clear existing anchors
+        arFragment?.arSceneView?.scene?.children?.filterIsInstance<AnchorNode>()?.forEach { node ->
+            node.anchor?.detach()
+            node.setParent(null)
+        }
+        anchorNoteMap.clear()
+        
+        Toast.makeText(this, "Switched to $roomName. Tap 'Align Room' to load notes.", Toast.LENGTH_LONG).show()
+    }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -426,6 +487,17 @@ class MainActivity : AppCompatActivity() {
     private fun setupTapListener() {
         arFragment?.setOnTapArPlaneListener { hitResult: HitResult, plane: Plane, _ ->
             if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) {
+                return@setOnTapArPlaneListener
+            }
+
+            // Check if we're in "Align Room" mode
+            if (isAlignRoomMode) {
+                roomOriginAnchor = session?.createAnchor(hitResult.hitPose)
+                isAlignRoomMode = false
+                Toast.makeText(this, "Room origin set for $currentRoomId! 📍", Toast.LENGTH_LONG).show()
+                
+                // Restore notes for this room
+                restoreNotesForCurrentRoom()
                 return@setOnTapArPlaneListener
             }
 
@@ -862,57 +934,71 @@ class MainActivity : AppCompatActivity() {
         // Store noteId in map for deletion
         anchorNoteMap[anchorNode] = noteId
         
-        // Host the anchor to Google Cloud for world-locked persistence
+        // Get the anchor from the placed node
         val anchor = anchorNode.anchor
-        if (anchor != null) {
-            val cloudAnchor = session?.hostCloudAnchorWithTtl(anchor, 365) // 365 day TTL (ARCore is free!)
-            if (cloudAnchor != null) {
-                // Monitor cloud anchor state
-                checkCloudAnchorState(cloudAnchor, noteId, userId, text, imageUrl, audioUrl, position)
-                Toast.makeText(this, "Uploading note to cloud...", Toast.LENGTH_SHORT).show()
-                return
-            }
+        if (anchor == null) {
+            Toast.makeText(this, "Error: No anchor found", Toast.LENGTH_SHORT).show()
+            return
         }
         
-        // Fallback if Cloud Anchor hosting fails - save with position only
-        saveNoteDataToFirestore(noteId, userId, text, imageUrl, audioUrl, "", position)
-    }
-    
-    private fun checkCloudAnchorState(cloudAnchor: com.google.ar.core.Anchor, noteId: String, 
-                                      userId: String, text: String, imageUrl: String, 
-                                      audioUrl: String, position: Vector3) {
-        // Check state every frame until it's hosted
-        window.decorView.postDelayed({
-            val state = cloudAnchor.cloudAnchorState
-            when (state) {
-                com.google.ar.core.Anchor.CloudAnchorState.SUCCESS -> {
-                    val cloudAnchorId = cloudAnchor.cloudAnchorId
-                    Toast.makeText(this, "Note anchored to real world! ☁️", Toast.LENGTH_SHORT).show()
-                    saveNoteDataToFirestore(noteId, userId, text, imageUrl, audioUrl, cloudAnchorId, position)
-                }
-                com.google.ar.core.Anchor.CloudAnchorState.ERROR_HOSTING_DATASET_PROCESSING_FAILED,
-                com.google.ar.core.Anchor.CloudAnchorState.ERROR_CLOUD_ID_NOT_FOUND,
-                com.google.ar.core.Anchor.CloudAnchorState.ERROR_HOSTING_SERVICE_UNAVAILABLE -> {
-                    Toast.makeText(this, "Cloud anchor failed, saving with position", Toast.LENGTH_SHORT).show()
-                    saveNoteDataToFirestore(noteId, userId, text, imageUrl, audioUrl, "", position)
-                }
-                else -> {
-                    // Still processing, check again
-                    checkCloudAnchorState(cloudAnchor, noteId, userId, text, imageUrl, audioUrl, position)
-                }
-            }
-        }, 100)
+        // If room origin anchor doesn't exist, set this as the origin
+        if (roomOriginAnchor == null) {
+            roomOriginAnchor = anchor
+            Toast.makeText(this, "Room origin set! 📍", Toast.LENGTH_SHORT).show()
+        }
+        
+        // Compute relative pose from room origin
+        val anchorPose = anchor.pose
+        val originPose = roomOriginAnchor?.pose
+        
+        if (originPose != null) {
+            // Calculate relative transformation: origin^-1 * anchor
+            val relativePose = originPose.inverse().compose(anchorPose)
+            
+            // Extract translation
+            val translation = relativePose.translation
+            val localPosX = translation[0]
+            val localPosY = translation[1]
+            val localPosZ = translation[2]
+            
+            // Extract rotation quaternion
+            val rotation = relativePose.rotationQuaternion
+            val localRotX = rotation[0]
+            val localRotY = rotation[1]
+            val localRotZ = rotation[2]
+            val localRotW = rotation[3]
+            
+            // Save to Firestore with room-relative pose
+            saveNoteDataToFirestore(noteId, userId, text, imageUrl, audioUrl, 
+                                   currentRoomId, localPosX, localPosY, localPosZ,
+                                   localRotX, localRotY, localRotZ, localRotW,
+                                   position)
+        } else {
+            // Fallback to world position if no origin (shouldn't happen)
+            saveNoteDataToFirestore(noteId, userId, text, imageUrl, audioUrl, 
+                                   currentRoomId, 0f, 0f, 0f, 0f, 0f, 0f, 1f, position)
+        }
     }
     
     private fun saveNoteDataToFirestore(noteId: String, userId: String, text: String, imageUrl: String, 
-                                       audioUrl: String, cloudAnchorId: String, position: Vector3) {
+                                       audioUrl: String, roomId: String,
+                                       localPosX: Float, localPosY: Float, localPosZ: Float,
+                                       localRotX: Float, localRotY: Float, localRotZ: Float, localRotW: Float,
+                                       position: Vector3) {
         val note = Note(
             id = noteId,
             userId = userId,
             text = text,
             imageUrl = imageUrl,
             audioUrl = audioUrl,
-            cloudAnchorId = cloudAnchorId,
+            roomId = roomId,
+            localPosX = localPosX,
+            localPosY = localPosY,
+            localPosZ = localPosZ,
+            localRotX = localRotX,
+            localRotY = localRotY,
+            localRotZ = localRotZ,
+            localRotW = localRotW,
             positionX = position.x,
             positionY = position.y,
             positionZ = position.z
@@ -930,67 +1016,78 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun loadNotesFromFirestore() {
+        // This function is deprecated - use restoreNotesForCurrentRoom() instead
+        Toast.makeText(this, "Use 'Align Room' to restore notes for a specific room", Toast.LENGTH_SHORT).show()
+    }
+    
+    private fun restoreNotesForCurrentRoom() {
         val userId = currentUserId ?: return
+        val originAnchor = roomOriginAnchor
+        
+        if (originAnchor == null) {
+            Toast.makeText(this, "Please tap 'Align Room' first to set room origin", Toast.LENGTH_SHORT).show()
+            return
+        }
         
         firestore.collection("notes")
             .whereEqualTo("userId", userId)
+            .whereEqualTo("roomId", currentRoomId)
             .get()
             .addOnSuccessListener { documents ->
                 if (documents.isEmpty) {
-                    Toast.makeText(this, "No saved notes found", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "No saved notes found in $currentRoomId", Toast.LENGTH_SHORT).show()
                     return@addOnSuccessListener
                 }
                 
-                Toast.makeText(this, "Loading ${documents.size()} saved notes...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Restoring ${documents.size()} notes in $currentRoomId...", Toast.LENGTH_SHORT).show()
                 
-                // Wait a bit for AR session to initialize
-                window.decorView.postDelayed({
-                    val arSession = session
-                    if (arSession == null) {
-                        Toast.makeText(this, "AR session not ready, notes will load next time", Toast.LENGTH_SHORT).show()
-                        return@postDelayed
-                    }
-                    
-                    // Check if AR is tracking
-                    val frame = arSession.update()
-                    if (frame.camera.trackingState != com.google.ar.core.TrackingState.TRACKING) {
-                        Toast.makeText(this, "AR not tracking yet, notes will load next time", Toast.LENGTH_SHORT).show()
-                        return@postDelayed
-                    }
-                    
-                    for (document in documents) {
-                        try {
-                            val note = document.toObject(Note::class.java)
+                val arSession = session
+                if (arSession == null) {
+                    Toast.makeText(this, "AR session not ready", Toast.LENGTH_SHORT).show()
+                    return@addOnSuccessListener
+                }
+                
+                for (document in documents) {
+                    try {
+                        val note = document.toObject(Note::class.java)
+                        
+                        // Restore using room-relative positioning
+                        if (note.roomId.isNotEmpty()) {
+                            // Compose world pose from origin + relative pose
+                            val originPose = originAnchor.pose
+                            val localTranslation = floatArrayOf(note.localPosX, note.localPosY, note.localPosZ)
+                            val localRotation = floatArrayOf(note.localRotX, note.localRotY, note.localRotZ, note.localRotW)
+                            val localPose = com.google.ar.core.Pose(localTranslation, localRotation)
+                            val worldPose = originPose.compose(localPose)
                             
-                            // Try to resolve Cloud Anchor first (world-locked position)
-                            if (note.cloudAnchorId.isNotEmpty()) {
-                                resolveCloudAnchor(note)
-                            } else {
-                                // Fallback: use saved position (not world-locked, but better than nothing)
-                                // Validate position data
-                                if (note.positionX == 0f && note.positionY == 0f && note.positionZ == 0f) {
-                                    continue
-                                }
-                                
-                                // Create pose at saved position (relative to current AR session)
-                                val translation = floatArrayOf(note.positionX, note.positionY, note.positionZ)
-                                val rotation = floatArrayOf(0f, 0f, 0f, 1f)
-                                
-                                val pose = com.google.ar.core.Pose(translation, rotation)
-                                val anchor = arSession.createAnchor(pose)
-                                
-                                val anchorNode = AnchorNode(anchor)
-                                anchorNode.setParent(arFragment?.arSceneView?.scene)
-                                
-                                // Recreate the note visualization
-                                val imageUri = if (note.imageUrl.isNotEmpty()) Uri.parse(note.imageUrl) else null
-                                val audioPath = if (note.audioUrl.isNotEmpty()) note.audioUrl else null
-                                
-                                placeNote(anchorNode, note.text, imageUri, audioPath, isLoadedNote = true)
-                                
-                                // Store noteId for deletion
-                                anchorNoteMap[anchorNode] = note.id
-                            }
+                            // Create anchor at computed world position
+                            val anchor = arSession.createAnchor(worldPose)
+                            val anchorNode = AnchorNode(anchor)
+                            anchorNode.setParent(arFragment?.arSceneView?.scene)
+                            
+                            val imageUri = if (note.imageUrl.isNotEmpty()) Uri.parse(note.imageUrl) else null
+                            val audioPath = if (note.audioUrl.isNotEmpty()) note.audioUrl else null
+                            
+                            placeNote(anchorNode, note.text, imageUri, audioPath, isLoadedNote = true)
+                            anchorNoteMap[anchorNode] = note.id
+                        } else if (note.positionX != 0f || note.positionY != 0f || note.positionZ != 0f) {
+                            // Legacy migration: old notes with world positions only
+                            val translation = floatArrayOf(note.positionX, note.positionY, note.positionZ)
+                            val rotation = floatArrayOf(0f, 0f, 0f, 1f)
+                            val pose = com.google.ar.core.Pose(translation, rotation)
+                            val anchor = arSession.createAnchor(pose)
+                            
+                            val anchorNode = AnchorNode(anchor)
+                            anchorNode.setParent(arFragment?.arSceneView?.scene)
+                            
+                            val imageUri = if (note.imageUrl.isNotEmpty()) Uri.parse(note.imageUrl) else null
+                            val audioPath = if (note.audioUrl.isNotEmpty()) note.audioUrl else null
+                            
+                            placeNote(anchorNode, note.text, imageUri, audioPath, isLoadedNote = true)
+                            anchorNoteMap[anchorNode] = note.id
+                            
+                            Toast.makeText(this, "Legacy note loaded - realign to update", Toast.LENGTH_SHORT).show()
+                        }
                             
                         } catch (e: Exception) {
                             android.util.Log.e("MainActivity", "Failed to load note", e)
@@ -1006,48 +1103,7 @@ class MainActivity : AppCompatActivity() {
             }
     }
     
-    private fun resolveCloudAnchor(note: Note) {
-        val arSession = session ?: return
-        
-        val cloudAnchor = arSession.resolveCloudAnchor(note.cloudAnchorId)
-        
-        // Monitor resolution state
-        window.decorView.postDelayed({
-            checkCloudAnchorResolution(cloudAnchor, note)
-        }, 100)
-    }
-    
-    private fun checkCloudAnchorResolution(cloudAnchor: com.google.ar.core.Anchor, note: Note) {
-        val state = cloudAnchor.cloudAnchorState
-        
-        when (state) {
-            com.google.ar.core.Anchor.CloudAnchorState.SUCCESS -> {
-                // Cloud Anchor resolved! This is the exact real-world position
-                val anchorNode = AnchorNode(cloudAnchor)
-                anchorNode.setParent(arFragment?.arSceneView?.scene)
-                
-                val imageUri = if (note.imageUrl.isNotEmpty()) Uri.parse(note.imageUrl) else null
-                val audioPath = if (note.audioUrl.isNotEmpty()) note.audioUrl else null
-                
-                placeNote(anchorNode, note.text, imageUri, audioPath, isLoadedNote = true)
-                anchorNoteMap[anchorNode] = note.id
-                
-                Toast.makeText(this, "Note restored at exact location! 📍", Toast.LENGTH_SHORT).show()
-            }
-            com.google.ar.core.Anchor.CloudAnchorState.ERROR_INTERNAL,
-            com.google.ar.core.Anchor.CloudAnchorState.ERROR_CLOUD_ID_NOT_FOUND,
-            com.google.ar.core.Anchor.CloudAnchorState.ERROR_RESOLVING_LOCALIZATION_NO_MATCH -> {
-                Toast.makeText(this, "Could not find note's location", Toast.LENGTH_SHORT).show()
-            }
-            else -> {
-                // Still resolving, check again
-                window.decorView.postDelayed({
-                    checkCloudAnchorResolution(cloudAnchor, note)
-                }, 100)
-            }
-        }
-    }
-    
+
     private fun deleteNoteFromFirestore(noteId: String) {
         firestore.collection("notes")
             .document(noteId)
