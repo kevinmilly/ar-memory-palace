@@ -133,6 +133,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Setup Toolbar
+        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
+        supportActionBar?.setDisplayShowTitleEnabled(false) // Hide title for clean AR view
+
         arFragment = supportFragmentManager.findFragmentById(R.id.arFragment) as? ArFragment
 
         // Initialize SharedPreferences
