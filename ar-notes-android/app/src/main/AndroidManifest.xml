@@ -18,14 +18,12 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="AR Memory Palace"
-        android:theme="@style/Theme.AppCompat.Light">
+        android:theme="@style/AppTheme">
         
         <!-- ARCore metadata -->
         <meta-data
             android:name="com.google.ar.core"
             android:value="required" />
-        
-        <!-- Cloud Anchors uses keyless OAuth auth (no API key needed for 365-day TTL) -->
         
         <!-- Splash Screen - Launcher Activity -->
         <activity
