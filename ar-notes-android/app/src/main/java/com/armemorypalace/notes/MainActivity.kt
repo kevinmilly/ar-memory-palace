@@ -341,7 +341,12 @@ class MainActivity : AppCompatActivity() {
             // Ensure ARFragment uses this session
             arFragment?.arSceneView?.setupSession(session)
 
-            Toast.makeText(this, "AR Session ready! Tap to place notes", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "AR Session ready! Move your phone slowly to scan surfaces", Toast.LENGTH_LONG).show()
+            
+            // Show scanning instructions immediately
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                Toast.makeText(this, "Look for white dots on flat surfaces - that's where you can place notes!", Toast.LENGTH_LONG).show()
+            }, 3000)
             
             // Set up tap listener
             setupTapListener()
@@ -376,14 +381,14 @@ class MainActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.menu_align_room -> {
                 isAlignRoomMode = true
-                Toast.makeText(this, "Tap a surface to set room origin for $currentRoomId", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Tap any surface to load your notes in $currentRoomId", Toast.LENGTH_LONG).show()
                 true
             }
             R.id.menu_start_walkthrough -> {
                 AlertDialog.Builder(this)
-                    .setTitle("Start Walkthrough")
-                    .setMessage("Select a room from the menu, then tap 'Align Room' and tap a surface to set the room origin. Your notes will appear!")
-                    .setPositiveButton("OK", null)
+                    .setTitle("How It Works")
+                    .setMessage("1. Choose a location from 'Change Location' menu\n2. Tap 'Load My Notes Here'\n3. Tap any surface to see your notes appear in AR!\n\nYour notes will always appear in the same spot when you return.")
+                    .setPositiveButton("Got It", null)
                     .show()
                 true
             }
@@ -453,7 +458,7 @@ class MainActivity : AppCompatActivity() {
         }
         anchorNoteMap.clear()
         
-        Toast.makeText(this, "Switched to $roomName. Tap 'Align Room' to load notes.", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Switched to $roomName. Tap 'Load My Notes Here' to see your notes.", Toast.LENGTH_LONG).show()
     }
 
     override fun onDestroy() {
@@ -991,7 +996,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun loadNotesFromFirestore() {
         // This function is deprecated - use restoreNotesForCurrentRoom() instead
-        Toast.makeText(this, "Use 'Align Room' to restore notes for a specific room", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Use 'Load My Notes Here' to see your notes in this location", Toast.LENGTH_SHORT).show()
     }
     
     private fun restoreNotesForCurrentRoom() {
@@ -999,7 +1004,7 @@ class MainActivity : AppCompatActivity() {
         val originAnchor = roomOriginAnchor
         
         if (originAnchor == null) {
-            Toast.makeText(this, "Please tap 'Align Room' first to set room origin", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Please tap 'Load My Notes Here' first from the menu", Toast.LENGTH_SHORT).show()
             return
         }
         
