@@ -1093,9 +1093,8 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, "Failed to load note: ${e.javaClass.simpleName}", Toast.LENGTH_SHORT).show()
                     }
                 }
-                    
-                    Toast.makeText(this, "Notes loaded!", Toast.LENGTH_SHORT).show()
-                }, 2000) // Wait 2 seconds for AR to initialize
+                
+                Toast.makeText(this, "Notes loaded!", Toast.LENGTH_SHORT).show()
             }
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Failed to load notes: ${e.message}", Toast.LENGTH_SHORT).show()
