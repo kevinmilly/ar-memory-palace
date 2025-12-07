@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_replay_tutorial"
+        android:title="Replay Tutorial"
+        android:icon="@android:drawable/ic_menu_help" />
+    <item
+        android:id="@+id/menu_sign_in"
+        android:title="Sign In with Google"
+        android:icon="@android:drawable/ic_menu_upload" />
+    <item
+        android:id="@+id/menu_sign_out"
+        android:title="Sign Out"
+        android:icon="@android:drawable/ic_menu_close_clear_cancel" />
+</menu>
