@@ -198,18 +198,12 @@ class MainActivity : AppCompatActivity() {
             val currentUser = auth.currentUser
             if (currentUser != null) {
                 currentUserId = currentUser.uid
-                android.util.Log.d("MainActivity", "Already signed in: $currentUserId, isAnonymous: ${currentUser.isAnonymous}")
-                
-                // If anonymous and tutorial is complete, offer to sign in
-                if (currentUser.isAnonymous && sharedPreferences.getBoolean(TUTORIAL_COMPLETED_KEY, false)) {
-                    showUpgradeAccountPrompt()
-                }
-                
+                android.util.Log.d("MainActivity", "Already signed in: $currentUserId")
                 loadNotesFromFirestore()
             } else {
-                android.util.Log.d("MainActivity", "No current user, signing in anonymously")
-                // Start with anonymous, prompt for Google Sign-In after first note
-                signInAnonymously()
+                android.util.Log.d("MainActivity", "No current user, requiring Google Sign-In")
+                // Require Google Sign-In - no anonymous mode
+                showSignInRequired()
             }
         } catch (e: Exception) {
             Toast.makeText(this, "Firebase error: ${e.message}", Toast.LENGTH_LONG).show()
@@ -230,50 +224,27 @@ class MainActivity : AppCompatActivity() {
             signInWithGoogle()
         }
         
-        // Show button if user is anonymous
+        // Hide button once user is signed in
         auth.addAuthStateListener { firebaseAuth ->
             val user = firebaseAuth.currentUser
-            android.util.Log.d("MainActivity", "Auth state changed. Anonymous: ${user?.isAnonymous}, UserId: ${user?.uid}")
+            android.util.Log.d("MainActivity", "Auth state changed. UserId: ${user?.uid}")
             
-            if (user?.isAnonymous == true) {
-                fabSignIn.visibility = android.view.View.VISIBLE
-                android.util.Log.d("MainActivity", "Showing sign-in button")
-            } else if (user != null) {
+            if (user != null) {
                 fabSignIn.visibility = android.view.View.GONE
-                android.util.Log.d("MainActivity", "Hiding sign-in button (signed in)")
+            } else {
+                fabSignIn.visibility = android.view.View.VISIBLE
             }
-        }
-        
-        // Also check immediately
-        val currentUser = auth.currentUser
-        if (currentUser?.isAnonymous == true) {
-            fabSignIn.visibility = android.view.View.VISIBLE
-            android.util.Log.d("MainActivity", "Initial check: showing button for anonymous user")
         }
     }
     
-    private fun signInAnonymously() {
-        auth.signInAnonymously()
-            .addOnSuccessListener { authResult ->
-                currentUserId = authResult.user?.uid
-                Toast.makeText(this, "Signed in anonymously", Toast.LENGTH_SHORT).show()
-                android.util.Log.d("MainActivity", "Anonymous auth success: $currentUserId")
-                loadNotesFromFirestore()
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Auth failed: ${e.message}", Toast.LENGTH_LONG).show()
-                android.util.Log.e("MainActivity", "Auth failed", e)
-            }
-    }
-    
-    private fun showUpgradeAccountPrompt() {
+    private fun showSignInRequired() {
         AlertDialog.Builder(this)
-            .setTitle("Save Notes Permanently")
-            .setMessage("Sign in with Google to sync your notes across all your devices")
+            .setTitle("Sign In Required")
+            .setMessage("Please sign in with Google to use AR Memory Palace and sync your notes across all devices")
             .setPositiveButton("Sign In") { _, _ ->
                 signInWithGoogle()
             }
-            .setNegativeButton("Later", null)
+            .setCancelable(false)
             .show()
     }
     
@@ -284,24 +255,16 @@ class MainActivity : AppCompatActivity() {
     
     private fun firebaseAuthWithGoogle(idToken: String) {
         val credential = GoogleAuthProvider.getCredential(idToken, null)
-        val previousUserId = currentUserId
         
-        auth.currentUser?.linkWithCredential(credential)
-            ?.addOnSuccessListener {
+        auth.signInWithCredential(credential)
+            .addOnSuccessListener {
                 currentUserId = it.user?.uid
-                Toast.makeText(this, "Account upgraded! Notes will sync across devices", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Signed in with Google", Toast.LENGTH_SHORT).show()
+                loadNotesFromFirestore()
             }
-            ?.addOnFailureListener { e ->
-                // If linking fails, try regular sign-in
-                auth.signInWithCredential(credential)
-                    .addOnSuccessListener {
-                        currentUserId = it.user?.uid
-                        Toast.makeText(this, "Signed in with Google", Toast.LENGTH_SHORT).show()
-                        loadNotesFromFirestore()
-                    }
-                    .addOnFailureListener { e2 ->
-                        Toast.makeText(this, "Sign-in failed: ${e2.message}", Toast.LENGTH_SHORT).show()
-                    }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Sign-in failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                showSignInRequired()
             }
     }
 
@@ -449,7 +412,7 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             R.id.menu_sign_in -> {
-                if (auth.currentUser?.isAnonymous == true) {
+                if (auth.currentUser == null) {
                     signInWithGoogle()
                 } else {
                     Toast.makeText(this, "Already signed in", Toast.LENGTH_SHORT).show()
@@ -457,10 +420,22 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             R.id.menu_sign_out -> {
+                // Clear all notes from AR scene
+                arFragment?.arSceneView?.scene?.children?.filterIsInstance<AnchorNode>()?.forEach { node ->
+                    node.anchor?.detach()
+                    node.setParent(null)
+                }
+                anchorNoteMap.clear()
+                roomOriginAnchor = null
+                
+                // Sign out
                 auth.signOut()
                 googleSignInClient.signOut()
+                currentUserId = null
                 Toast.makeText(this, "Signed out", Toast.LENGTH_SHORT).show()
-                signInAnonymously()
+                
+                // Require sign-in again
+                showSignInRequired()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -715,22 +690,22 @@ class MainActivity : AppCompatActivity() {
             android.graphics.Color.parseColor("#FFC107")
         )
         
-        // Get color based on current noteCount (use absolute value to avoid negative index)
+        // Get color based on sequential noteCount for consistent rotation
         val colorIndex = if (!isLoadedNote) {
             noteCount++
             (noteCount - 1) % colors.size
         } else {
-            // For loaded notes, use a random color or cycle through based on position
-            kotlin.math.abs(noteText.hashCode()) % colors.size
+            // For loaded notes, use sequential color based on index
+            (anchorNoteMap.size) % colors.size
         }
         val color = colors[colorIndex]
 
         MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(color))
             .thenAccept { material ->
-                // Create a sphere marker (like a pin/location marker)
+                // Create a smaller sphere marker (like a pin/location marker)
                 val sphere = ShapeFactory.makeSphere(
-                    0.08f,  // radius
-                    Vector3(0f, 0.08f, 0f),  // center position
+                    0.05f,  // radius (smaller)
+                    Vector3(0f, 0.05f, 0f),  // center position
                     material
                 )
                 
@@ -801,11 +776,6 @@ class MainActivity : AppCompatActivity() {
                 saveNoteToFirestore(noteText, imageUri, audioPath, anchorNode)
                 
                 Toast.makeText(this, "Note placed!", Toast.LENGTH_SHORT).show()
-                
-                // Show upgrade prompt after first note if user is anonymous (only for new notes, not loaded ones)
-                if (!isLoadedNote && noteCount == 1 && auth.currentUser?.isAnonymous == true) {
-                    showUpgradeAccountPrompt()
-                }
             }
     }
 
@@ -1180,16 +1150,16 @@ class MainActivity : AppCompatActivity() {
             0 -> {
                 tutorialStepIndicator.text = "STEP 1 OF 3"
                 tutorialIcon.text = "📱"
-                tutorialTitle.text = "Welcome to AR Memory Palace"
-                tutorialMessage.text = "Move your phone slowly to scan your environment and detect surfaces"
+                tutorialTitle.text = "Scan Your Space"
+                tutorialMessage.text = "Move your phone slowly around the room. This lets the app map your surroundings and detect surfaces where you can place notes. Look for white dots appearing on flat surfaces."
                 tutorialArrow.visibility = View.GONE
                 tutorialNextButton.text = "NEXT"
             }
             1 -> {
                 tutorialStepIndicator.text = "STEP 2 OF 3"
                 tutorialIcon.text = "👆"
-                tutorialTitle.text = "Place Your Notes"
-                tutorialMessage.text = "Tap on a detected surface (you'll see white dots) to place a spatial note"
+                tutorialTitle.text = "Tap to Place Notes"
+                tutorialMessage.text = "Once you see white dots on a surface, tap where you want to place a note. Your note will stay anchored in that exact spot in the real world!"
                 tutorialArrow.visibility = View.VISIBLE
                 animateArrow()
                 tutorialNextButton.text = "NEXT"
@@ -1197,8 +1167,8 @@ class MainActivity : AppCompatActivity() {
             2 -> {
                 tutorialStepIndicator.text = "STEP 3 OF 3"
                 tutorialIcon.text = "🎤📷✍️"
-                tutorialTitle.text = "Add Rich Content"
-                tutorialMessage.text = "When placing a note, you can choose to add text, images, or audio recordings"
+                tutorialTitle.text = "Add Text, Photos, or Audio"
+                tutorialMessage.text = "Each note can contain text, photos, or voice recordings. Choose the type that works best for what you want to remember!"
                 tutorialArrow.visibility = View.GONE
                 tutorialNextButton.text = "GET STARTED"
             }
