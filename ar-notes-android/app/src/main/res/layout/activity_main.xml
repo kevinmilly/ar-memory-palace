@@ -24,6 +24,47 @@
     <!-- Tutorial Overlay (included from separate layout) -->
     <include layout="@layout/tutorial_overlay" />
 
+    <!-- Scanning Help Text Overlay -->
+    <LinearLayout
+        android:id="@+id/scanningHelpOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="100dp"
+        android:background="#DD000000"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="📱 Scanning Your Space"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:text="Move your phone slowly to map the room.\nThis helps place notes in the exact same spot every time."
+            android:textColor="#CCCCCC"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="👀 Look for white dots on surfaces"
+            android:textColor="#4CAF50"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+
     <!-- Sign In Button (Floating) -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fabSignIn"

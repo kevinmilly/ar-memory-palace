@@ -107,6 +107,9 @@ class MainActivity : AppCompatActivity() {
     private var audioFilePath: String? = null
     private var isRecording = false
 
+    // Scanning help overlay
+    private var scanningHelpOverlay: View? = null
+
     // Tutorial
     private lateinit var tutorialOverlay: View
     private lateinit var tutorialStepIndicator: TextView
@@ -141,6 +144,9 @@ class MainActivity : AppCompatActivity() {
 
         // Initialize SharedPreferences
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // Initialize scanning help overlay
+        scanningHelpOverlay = findViewById(R.id.scanningHelpOverlay)
 
         // Initialize tutorial views
         initializeTutorial()
@@ -341,12 +347,16 @@ class MainActivity : AppCompatActivity() {
             // Ensure ARFragment uses this session
             arFragment?.arSceneView?.setupSession(session)
 
-            Toast.makeText(this, "AR Session ready! Move your phone slowly to scan surfaces", Toast.LENGTH_LONG).show()
-            
-            // Show scanning instructions immediately
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                Toast.makeText(this, "Look for white dots on flat surfaces - that's where you can place notes!", Toast.LENGTH_LONG).show()
-            }, 3000)
+            // Show scanning help overlay for first 10 seconds or until tutorial is dismissed
+            val tutorialCompleted = sharedPreferences.getBoolean(TUTORIAL_COMPLETED_KEY, false)
+            if (tutorialCompleted) {
+                // If tutorial already completed, show scanning help for 10 seconds
+                scanningHelpOverlay?.visibility = View.VISIBLE
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    scanningHelpOverlay?.visibility = View.GONE
+                }, 10000)
+            }
+            // Otherwise, tutorial will show instead
             
             // Set up tap listener
             setupTapListener()
