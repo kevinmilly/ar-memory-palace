@@ -4,10 +4,6 @@
         android:id="@+id/menu_align_room"
         android:title="Load My Notes Here"
         android:icon="@android:drawable/ic_menu_compass" />
-    <item
-        android:id="@+id/menu_start_walkthrough"
-        android:title="How It Works"
-        android:icon="@android:drawable/ic_menu_directions" />
     <item android:title="Change Location">
         <menu>
             <item
@@ -29,7 +25,7 @@
     </item>
     <item
         android:id="@+id/menu_replay_tutorial"
-        android:title="Show Tutorial Again"
+        android:title="How It Works"
         android:icon="@android:drawable/ic_menu_help" />
     <item
         android:id="@+id/menu_sign_in"

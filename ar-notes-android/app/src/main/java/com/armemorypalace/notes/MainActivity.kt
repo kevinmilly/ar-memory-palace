@@ -374,7 +374,20 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
+        
+        // Hide Sign In if user is already signed in
+        val signInItem = menu.findItem(R.id.menu_sign_in)
+        signInItem?.isVisible = auth.currentUser == null
+        
         return true
+    }
+    
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        // Update menu visibility based on auth state
+        val signInItem = menu.findItem(R.id.menu_sign_in)
+        signInItem?.isVisible = auth.currentUser == null
+        
+        return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -382,14 +395,6 @@ class MainActivity : AppCompatActivity() {
             R.id.menu_align_room -> {
                 isAlignRoomMode = true
                 Toast.makeText(this, "Tap any surface to load your notes in $currentRoomId", Toast.LENGTH_LONG).show()
-                true
-            }
-            R.id.menu_start_walkthrough -> {
-                AlertDialog.Builder(this)
-                    .setTitle("How It Works")
-                    .setMessage("1. Choose a location from 'Change Location' menu\n2. Tap 'Load My Notes Here'\n3. Tap any surface to see your notes appear in AR!\n\nYour notes will always appear in the same spot when you return.")
-                    .setPositiveButton("Got It", null)
-                    .show()
                 true
             }
             R.id.menu_room_kitchen -> {
@@ -1155,8 +1160,8 @@ class MainActivity : AppCompatActivity() {
             0 -> {
                 tutorialStepIndicator.text = "STEP 1 OF 3"
                 tutorialIcon.text = "📱"
-                tutorialTitle.text = "Scan Your Space"
-                tutorialMessage.text = "Move your phone slowly around the room. This lets the app map your surroundings and detect surfaces where you can place notes. Look for white dots appearing on flat surfaces."
+                tutorialTitle.text = "Why Scan Your Space?"
+                tutorialMessage.text = "The app needs to understand your room's layout to place notes in the exact same spot every time you return. Move your phone slowly around to build a 3D map. You'll see white dots appear on surfaces - these show where the app has mapped."
                 tutorialArrow.visibility = View.GONE
                 tutorialNextButton.text = "NEXT"
             }
@@ -1219,7 +1224,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun replayTutorial() {
-        // Public method to replay tutorial (can be called from menu)
+        // Public method to show How It Works tutorial (called from menu)
         currentTutorialStep = 0
         showTutorial()
     }
